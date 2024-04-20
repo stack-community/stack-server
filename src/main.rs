@@ -1227,8 +1227,19 @@ impl Executor {
                 let message = self.pop_stack().get_string();
                 let uri = self.pop_stack().get_string();
 
-                let handler = rocket::Route::new(rocket::http::Method::Get, uri.as_str(),  move |_req, _data| {
-                    message.clone()            
+                let handler = rocket::Route::new(rocket::http::Method::Get, &uri,  move |_req, _data| {
+                    let message = message.clone(); // Clone the message to move into the closure
+            
+                    let fut = async move {
+                        let response = rocket::Response::build()
+                            .status(rocket::http::Status::Ok)
+                            .sized_body(message.len(), std::io::Cursor::new(message))
+                            .finalize();
+                        
+                        Outcome::Success(response)
+                    };
+            
+                    Box::pin(async move { fut.await })
                 });
 
                 #[rocket::launch]
