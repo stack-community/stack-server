@@ -1,3 +1,4 @@
-(index.html) read-file 
-({}) host-name sys-info replace 
-lanch-server
+(127.0.0.1:8080) (
+    (index.html) read-file 
+    ({}) now-time replace 
+) lanch-server

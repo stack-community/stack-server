@@ -36,7 +36,7 @@ fn main() {
                     println!("Error! {err}");
                     return;
                 }
-            });            
+            });
         } else {
             let mut stack = Executor::new(Mode::Script);
             stack.evaluate_program(match get_file_contents(Path::new(&script.to_string())) {
@@ -1220,8 +1220,10 @@ impl Executor {
             }
 
             "lanch-server" => {
-                server(self.pop_stack().get_string())
-            }
+                let code: String = self.pop_stack().get_string();
+                let address: String = self.pop_stack().get_string();
+                self.server(address, code);
+            },
 
             // If it is not recognized as a command, use it as a string.
             _ => self.stack.push(Type::String(command)),
@@ -1240,29 +1242,33 @@ impl Executor {
             Type::String("".to_string())
         }
     }
-}
 
-fn handle(mut stream: TcpStream, text: String) {
-    let mut buffer = [0; 1024];
+    fn handle(&mut self, mut stream: TcpStream, code: String) {
+        let mut buffer = [0; 1024];
 
-    stream.read(&mut buffer).unwrap();
+        stream.read(&mut buffer).unwrap();
 
-    let response = &format!("HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\n\r\n{text}");
-    stream.write(response.as_bytes()).unwrap();
-    stream.flush().unwrap();
-}
-
-fn server(text: String) {
-    let listener = TcpListener::bind("127.0.0.1:8080").unwrap();
-    println!("Server listening on port 8080");
-
-    for stream in listener.incoming() {
-        match stream {
-            Ok(stream) => {
-                handle(stream, text.clone())
+        let response = &format!(
+            "HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\n\r\n{}",
+            {
+                self.evaluate_program(code);
+                self.pop_stack().get_string()
             }
-            Err(e) => {
-                println!("Error: {}", e);
+        );
+        stream.write(response.as_bytes()).unwrap();
+        stream.flush().unwrap();
+    }
+
+    fn server(&mut self, address: String, code: String) {
+        let listener = TcpListener::bind(address.clone()).unwrap();
+        println!("Server started on {address}");
+
+        for stream in listener.incoming() {
+            match stream {
+                Ok(stream) => self.handle(stream, code.clone()),
+                Err(e) => {
+                    println!("Error: {}", e);
+                }
             }
         }
     }
