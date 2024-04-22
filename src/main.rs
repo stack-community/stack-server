@@ -1247,7 +1247,7 @@ fn handle(mut stream: TcpStream, text: String) {
 
     stream.read(&mut buffer).unwrap();
 
-    let response = &format!("HTTP/1.1 200 OK\r\nContent-Type: text/plain; charset=utf-8\r\n\r\n{text}");
+    let response = &format!("HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\n\r\n{text}");
     stream.write(response.as_bytes()).unwrap();
     stream.flush().unwrap();
 }
