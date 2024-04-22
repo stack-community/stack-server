@@ -1263,8 +1263,15 @@ impl Executor {
                 }
             )
         } else {
-            "HTTP/1.1 404 NOT FOUND\r\nContent-Type: text/plain; charset=utf-8\r\n\r\nNot Found"
-                .to_string()
+            format!(
+                "HTTP/1.1 404 NOT FOUND\r\nContent-Type: text/html; charset=utf-8\r\n\r\n{}",
+                if let Some(code) = routes.get("not-found") {
+                    self.evaluate_program(code.to_owned());
+                    self.pop_stack().get_string()
+                } else {
+                    "404 - Not found".to_string()
+                }
+            )
         };
         stream.write(response.as_bytes()).unwrap();
         stream.flush().unwrap();

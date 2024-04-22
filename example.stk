@@ -1,11 +1,16 @@
 (127.0.0.1:8080)
 [
-    [(/hello) (
+    [(/time/now) (
         (index.html) read-file 
         ({}) now-time replace 
     )]
 
-    [(/a) (
-        (a! ) 100 repeat
+    [(/) (
+        (about.html) read-file        
     )]
+
+    [(not-found) (
+        こんなWebページ無いよー
+    )]
+
 ] lanch-server
