@@ -1219,7 +1219,7 @@ impl Executor {
                 })
             }
 
-            "lanch-server" => {
+            "start-server" => {
                 let code: Type = self.pop_stack();
                 let address: String = self.pop_stack().get_string();
                 self.server(address, code);
