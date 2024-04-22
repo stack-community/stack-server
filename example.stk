@@ -1,4 +1,11 @@
-(127.0.0.1:8080) (
-    (index.html) read-file 
-    ({}) now-time replace 
-) lanch-server
+(127.0.0.1:8080)
+[
+    [(/hello) (
+        (index.html) read-file 
+        ({}) now-time replace 
+    )]
+
+    [(/a) (
+        (a! ) 100 repeat
+    )]
+] lanch-server

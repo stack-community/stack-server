@@ -1220,10 +1220,10 @@ impl Executor {
             }
 
             "lanch-server" => {
-                let code: String = self.pop_stack().get_string();
+                let code: Type = self.pop_stack();
                 let address: String = self.pop_stack().get_string();
                 self.server(address, code);
-            },
+            }
 
             // If it is not recognized as a command, use it as a string.
             _ => self.stack.push(Type::String(command)),
@@ -1243,29 +1243,47 @@ impl Executor {
         }
     }
 
-    fn handle(&mut self, mut stream: TcpStream, code: String) {
+    fn handle(&mut self, mut stream: TcpStream, routes: HashMap<String, String>) {
         let mut buffer = [0; 1024];
-
         stream.read(&mut buffer).unwrap();
+        let request = String::from_utf8_lossy(&buffer[..]);
 
-        let response = &format!(
-            "HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\n\r\n{}",
-            {
-                self.evaluate_program(code);
-                self.pop_stack().get_string()
-            }
-        );
+        let response = if let Some(code) = routes.get(
+            request
+                .trim_start()
+                .split_whitespace()
+                .nth(1)
+                .unwrap_or_default(),
+        ) {
+            format!(
+                "HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\n\r\n{}",
+                {
+                    self.evaluate_program(code.to_owned());
+                    self.pop_stack().get_string()
+                }
+            )
+        } else {
+            "HTTP/1.1 404 NOT FOUND\r\nContent-Type: text/plain; charset=utf-8\r\n\r\nNot Found"
+                .to_string()
+        };
         stream.write(response.as_bytes()).unwrap();
         stream.flush().unwrap();
     }
 
-    fn server(&mut self, address: String, code: String) {
+    fn server(&mut self, address: String, mut code: Type) {
         let listener = TcpListener::bind(address.clone()).unwrap();
         println!("Server started on {address}");
 
+        let mut hashmap: HashMap<String, String> = HashMap::new();
+        for mut i in code.get_list() {
+            let key = i.get_list()[0].get_string();
+            let value = i.get_list()[1].get_string();
+            hashmap.insert(key, value);
+        }
+
         for stream in listener.incoming() {
             match stream {
-                Ok(stream) => self.handle(stream, code.clone()),
+                Ok(stream) => self.handle(stream, hashmap.clone()),
                 Err(e) => {
                     println!("Error: {}", e);
                 }
