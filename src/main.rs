@@ -1,5 +1,3 @@
-use rocket;
-use crate::rocket::outcome::Outcome;
 use clap::{App, Arg};
 use rand::seq::SliceRandom;
 use regex::Regex;
@@ -7,14 +5,15 @@ use std::collections::HashMap;
 use std::env;
 use std::fs::File;
 use std::io::{self, Error, Read, Write};
+use std::net::{TcpListener, TcpStream};
 use std::path::Path;
 use std::thread::{self, sleep};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use sys_info::{cpu_num, cpu_speed, hostname, mem_info, os_release, os_type};
 
 fn main() {
-    let matches = App::new("Stack")
-        .version("1.12")
+    let matches = App::new("Stack Server")
+        .version("0.1")
         .author("Stack Programming Community")
         .about("The powerful script language designed with a stack oriented approach for efficient execution. ")
         .arg(Arg::new("script")
@@ -37,7 +36,7 @@ fn main() {
                     println!("Error! {err}");
                     return;
                 }
-            })
+            });            
         } else {
             let mut stack = Executor::new(Mode::Script);
             stack.evaluate_program(match get_file_contents(Path::new(&script.to_string())) {
@@ -50,7 +49,7 @@ fn main() {
         }
     } else {
         // Show a title
-        println!("Stack Programming Language");
+        println!("Stack Programming Language: Server Edition");
         let mut executor = Executor::new(Mode::Debug);
         // REPL Execution
         loop {
@@ -1220,32 +1219,8 @@ impl Executor {
                 })
             }
 
-            // Commands of web server
-
-            // Lanch the web server
             "lanch-server" => {
-                let message = self.pop_stack().get_string();
-                let uri = self.pop_stack().get_string();
-
-                let handler = rocket::Route::new(rocket::http::Method::Get, &uri,  move |_req, _data| {
-                    let message = message.clone(); // Clone the message to move into the closure
-            
-                    let fut = async move {
-                        let response = rocket::Response::build()
-                            .status(rocket::http::Status::Ok)
-                            .sized_body(message.len(), std::io::Cursor::new(message))
-                            .finalize();
-                        
-                        Outcome::Success(response)
-                    };
-            
-                    Box::pin(async move { fut.await })
-                });
-
-                #[rocket::launch]
-                fn rocket() -> _ {
-                    rocket::build().mount("/", rocket::routes![handler])
-                }
+                server(self.pop_stack().get_string())
             }
 
             // If it is not recognized as a command, use it as a string.
@@ -1263,6 +1238,32 @@ impl Executor {
                     .to_string(),
             );
             Type::String("".to_string())
+        }
+    }
+}
+
+fn handle(mut stream: TcpStream, text: String) {
+    let mut buffer = [0; 1024];
+
+    stream.read(&mut buffer).unwrap();
+
+    let response = &format!("HTTP/1.1 200 OK\r\nContent-Type: text/plain; charset=utf-8\r\n\r\n{text}");
+    stream.write(response.as_bytes()).unwrap();
+    stream.flush().unwrap();
+}
+
+fn server(text: String) {
+    let listener = TcpListener::bind("127.0.0.1:8080").unwrap();
+    println!("Server listening on port 8080");
+
+    for stream in listener.incoming() {
+        match stream {
+            Ok(stream) => {
+                handle(stream, text.clone())
+            }
+            Err(e) => {
+                println!("Error: {}", e);
+            }
         }
     }
 }
