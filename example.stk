@@ -1,22 +1,40 @@
+(　# Judgement is it prime number #
+    (number) var
+    2 (i) var
+    true (flag) var
+    
+    (   (false) (true)
+        number 2 less if (flag) var
+    ) (
+        (false (flag) var) 
+        (
+            (
+                ( 
+                    false (flag) var
+                ) ()
+                number i mod 0 equal if
+
+                i 1 add (i) var
+            )
+            (i number 0.5 pow 1 add less flag and) while
+        ) number 2 mod 0 equal number 3 mod 0 equal or if
+    ) number 4 less if
+    flag
+)
+(prime?) var
+
 (127.0.0.1:8080)
 [
     [(POST /) (
-        (text/html)
+        (text/html) body println
+        body (number=) () replace (arg) var
     
-        body println
-    
-        body (&) split (i) (
-            i (=) split 1 get
-        ) map (args) var
-    
-        args println
-
         (index.html) read-file ({})
-        args ( + ) join ( = ) concat 
-        args 0 get ([0-9]+) regex 0 get (number) cast 
-        args 1 get ([0-9]+) regex 0 get (number) cast
-        add concat 
-        replace
+        
+        arg (は素数です) (は素数ではありません)
+        arg ([0-9]+) regex () join (number) cast
+
+        prime? eval if concat replace
     )]
 
     [(GET /) (
