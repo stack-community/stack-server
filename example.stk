@@ -26,15 +26,16 @@
 (127.0.0.1:8080)
 [
     [(POST /) (
-        (text/html) body println
+        body println
         body (number=) () replace (arg) var
-    
-        (index.html) read-file ({})
         
-        arg (は素数です) (は素数ではありません)
-        arg ([0-9]+) regex () join (number) cast
+        arg ([0-9]+) regex () join (number) cast 
+        prime? eval (result) var
 
-        prime? eval if concat replace
+        arg (は素数です) (は素数ではありません)
+        result if concat (result) var
+
+        (text/html) (index.html) read-file ({}) result replace
     )]
 
     [(GET /) (
