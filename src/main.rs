@@ -5,6 +5,7 @@ use std::collections::HashMap;
 use std::env;
 use std::fs::File;
 use std::io::{self, Error, Read, Write};
+use percent_encoding::percent_decode_str;
 use std::net::{TcpListener, TcpStream};
 use std::path::Path;
 use std::thread::{self, sleep};
@@ -1246,46 +1247,69 @@ impl Executor {
     fn handle(&mut self, mut stream: TcpStream, routes: HashMap<String, String>) {
         let mut buffer = [0; 1024];
         stream.read(&mut buffer).unwrap();
-        let request = String::from_utf8_lossy(&buffer[..]);
-
-        let response = if let Some(code) = routes.get(
-            request
-                .trim_start()
-                .split_whitespace()
-                .nth(1)
-                .unwrap_or_default(),
-        ) {
+    
+        let request_str = String::from_utf8_lossy(&buffer);
+        let mut lines = request_str.lines();
+        let request_line = lines.next().unwrap_or_default();
+        let (method, path) = parse_request_line(request_line);
+    
+        // Find the empty line separating headers and body
+        while let Some(line) = lines.next() {
+            if line.is_empty() {
+                break;
+            }
+        }
+    
+        let mut body = String::new();
+        while let Some(line) = lines.next() {
+            if line.is_empty() {
+                break;
+            }
+            body.push_str(&percent_decode_str(line).decode_utf8().unwrap());
+        }
+    
+        let matching = vec![method.to_string(), path.to_string()].join(" ");
+    
+        let response = if let Some(code) = routes.get(&matching) {
+            let body = Type::String(body);
+    
+            self.memory
+                .entry("body".to_string())
+                .and_modify(|value| *value = body.clone())
+                .or_insert(body);
+            self.show_variables();
+    
+            self.evaluate_program(code.to_owned());
             format!(
-                "HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\n\r\n{}",
-                {
-                    self.evaluate_program(code.to_owned());
-                    self.pop_stack().get_string()
-                }
+                "HTTP/1.1 200 OK\r\nContent-Type: {1}; charset=utf-8\r\n\r\n{0}",
+                self.pop_stack().get_string(),
+                self.pop_stack().get_string()
             )
         } else {
             format!(
-                "HTTP/1.1 404 NOT FOUND\r\nContent-Type: text/html; charset=utf-8\r\n\r\n{}",
+                "HTTP/1.1 404 NOT FOUND\r\nContent-Type: {1}; charset=utf-8\r\n\r\n{0}",
                 if let Some(code) = routes.get("not-found") {
                     self.evaluate_program(code.to_owned());
                     self.pop_stack().get_string()
                 } else {
                     "404 - Not found".to_string()
-                }
+                },
+                self.pop_stack().get_string()
             )
         };
         stream.write(response.as_bytes()).unwrap();
         stream.flush().unwrap();
-    }
+    }    
 
     fn server(&mut self, address: String, mut code: Type) {
         let listener = TcpListener::bind(address.clone()).unwrap();
-        println!("Server started on {address}");
+        println!("Server is started on http://{address}");
 
         let mut hashmap: HashMap<String, String> = HashMap::new();
         for mut i in code.get_list() {
-            let key = i.get_list()[0].get_string();
+            let matching = i.get_list()[0].get_string();
             let value = i.get_list()[1].get_string();
-            hashmap.insert(key, value);
+            hashmap.insert(matching, value);
         }
 
         for stream in listener.incoming() {
@@ -1297,4 +1321,12 @@ impl Executor {
             }
         }
     }
+}
+
+fn parse_request_line(request_line: &str) -> (String, String) {
+    let parts: Vec<&str> = request_line.trim().split_whitespace().collect();
+    let method = parts.get(0).unwrap_or(&"").to_string();
+    let path = parts.get(1).unwrap_or(&"").to_string();
+
+    (method, path)
 }

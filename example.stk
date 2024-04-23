@@ -1,16 +1,26 @@
 (127.0.0.1:8080)
 [
-    [(/time/now) (
-        (index.html) read-file 
-        ({}) now-time replace 
+    [(POST /) (
+        (text/html)
+    
+        body println
+    
+        body (&) split (i) (
+            i (=) split 1 get
+        ) map (args) var
+    
+        args println
+
+        (index.html) read-file ({})
+        args ( + ) join ( = ) concat 
+        args 0 get ([0-9]+) regex 0 get (number) cast 
+        args 1 get ([0-9]+) regex 0 get (number) cast
+        add concat 
+        replace
     )]
 
-    [(/) (
-        (about.html) read-file        
+    [(GET /) (
+        (text/html)
+        (index.html) read-file ({}) () replace
     )]
-
-    [(not-found) (
-        こんなWebページ無いよー
-    )]
-
 ] start-server
