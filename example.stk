@@ -40,6 +40,17 @@
 
     [(GET /) (
         (text/html)
-        (index.html) read-file ({}) () replace
+        (index.html) read-file ({}) (ここに判定結果が表示されます) replace
+    )]
+
+    [(POST /api) (
+        body println
+
+        body (json) cast (number) get-json (number) cast (num) var
+        num prime? eval (result) var
+
+        ({"number": <1>, "result": <2>}) 
+        (<1>) num replace (<2>) result replace
+        (text/json) swap
     )]
 ] start-server

@@ -1,11 +1,12 @@
 use clap::{App, Arg};
+use percent_encoding::percent_decode_str;
 use rand::seq::SliceRandom;
 use regex::Regex;
+use serde_json::{json, Value};
 use std::collections::HashMap;
 use std::env;
 use std::fs::File;
 use std::io::{self, Error, Read, Write};
-use percent_encoding::percent_decode_str;
 use std::net::{TcpListener, TcpStream};
 use std::path::Path;
 use std::thread::{self, sleep};
@@ -17,15 +18,19 @@ fn main() {
         .version("0.1")
         .author("Stack Programming Community")
         .about("Server edition of Stack programming language distribution ")
-        .arg(Arg::new("script")
-            .index(1)
-            .value_name("FILE")
-            .help("Sets the server program file to execution")
-            .takes_value(true))
-        .arg(Arg::new("debug")
-            .short('d')
-            .long("debug")
-            .help("Enables debug mode"))
+        .arg(
+            Arg::new("script")
+                .index(1)
+                .value_name("FILE")
+                .help("Sets the server program file to execution")
+                .takes_value(true),
+        )
+        .arg(
+            Arg::new("debug")
+                .short('d')
+                .long("debug")
+                .help("Enables debug mode"),
+        )
         .get_matches();
 
     if let Some(script) = matches.value_of("script") {
@@ -99,6 +104,7 @@ enum Type {
     String(String),
     Bool(bool),
     List(Vec<Type>),
+    Json(Value),
     Object(String, HashMap<String, Type>),
     Error(String),
 }
@@ -115,6 +121,7 @@ impl Type {
                 let result: Vec<String> = list.iter().map(|token| token.display()).collect();
                 format!("[{}]", result.join(" "))
             }
+            Type::Json(j) => serde_json::to_string_pretty(&j).unwrap_or("{}".to_string()),
             Type::Error(err) => format!("error:{err}"),
             Type::Object(name, _) => {
                 format!("Object<{name}>")
@@ -129,6 +136,7 @@ impl Type {
             Type::Number(i) => i.to_string(),
             Type::Bool(b) => b.to_string(),
             Type::List(l) => Type::List(l.to_owned()).display(),
+            Type::Json(j) => j.as_str().unwrap_or("").to_string(),
             Type::Error(err) => format!("error:{err}"),
             Type::Object(name, _) => {
                 format!("Object<{name}>")
@@ -148,6 +156,7 @@ impl Type {
                     0.0
                 }
             }
+            Type::Json(j) => j.as_f64().unwrap_or(0f64),
             Type::List(l) => l.len() as f64,
             Type::Error(e) => e.parse().unwrap_or(0f64),
             Type::Object(_, object) => object.len() as f64,
@@ -161,6 +170,7 @@ impl Type {
             Type::Number(i) => *i != 0.0,
             Type::Bool(b) => *b,
             Type::List(l) => !l.is_empty(),
+            Type::Json(j) => j.as_bool().unwrap_or(false),
             Type::Error(e) => e.parse().unwrap_or(false),
             Type::Object(_, object) => object.is_empty(),
         }
@@ -177,8 +187,26 @@ impl Type {
             Type::Number(i) => vec![Type::Number(*i)],
             Type::Bool(b) => vec![Type::Bool(*b)],
             Type::List(l) => l.to_vec(),
+            Type::Json(j) => {
+                if let Some(obj) = j.as_object() {
+                    obj.keys().cloned().map(Type::String).collect::<Vec<Type>>()
+                } else {
+                    Vec::new()
+                }
+            }
             Type::Error(e) => vec![Type::Error(e.to_string())],
             Type::Object(_, object) => object.values().map(|x| x.to_owned()).collect::<Vec<Type>>(),
+        }
+    }
+
+    fn get_json(&mut self) -> Value {
+        match self {
+            Type::Json(j) => j.to_owned(),
+            Type::String(j) => {
+                dbg!(j.clone());
+                serde_json::from_str(j.as_str().trim_end_matches(char::from(0))).unwrap_or(json!({}))
+            }
+            _ => json!({}),
         }
     }
 }
@@ -1024,6 +1052,7 @@ impl Executor {
                     Type::String(_) => "string".to_string(),
                     Type::Bool(_) => "bool".to_string(),
                     Type::List(_) => "list".to_string(),
+                    Type::Json(_) => "json".to_string(),
                     Type::Error(_) => "error".to_string(),
                     Type::Object(name, _) => name.to_string(),
                 };
@@ -1040,6 +1069,7 @@ impl Executor {
                     "string" => self.stack.push(Type::String(value.get_string())),
                     "bool" => self.stack.push(Type::Bool(value.get_bool())),
                     "list" => self.stack.push(Type::List(value.get_list())),
+                    "json" => self.stack.push(Type::Json(value.get_json())),
                     "error" => self.stack.push(Type::Error(value.get_string())),
                     _ => self.stack.push(value),
                 }
@@ -1220,6 +1250,25 @@ impl Executor {
                 })
             }
 
+            // Commands of web server
+
+            // Get value from json
+            "get-json" => {
+                let key = self.pop_stack().get_string();
+                let json = self.pop_stack().get_json();
+                self.stack.push(Type::Json(json[key].clone()))
+            }
+
+            // Set value of json
+            "set-json" => {
+                let value = self.pop_stack().get_json();
+                let key = self.pop_stack().get_string();
+                let mut json = self.pop_stack().get_json();
+                json[key] = value;
+                self.stack.push(Type::Json(json))
+            }
+
+            // start web server
             "start-server" => {
                 let code: Type = self.pop_stack();
                 let address: String = self.pop_stack().get_string();
@@ -1247,19 +1296,19 @@ impl Executor {
     fn handle(&mut self, mut stream: TcpStream, routes: HashMap<String, String>) {
         let mut buffer = [0; 1024];
         stream.read(&mut buffer).unwrap();
-    
+
         let request_str = String::from_utf8_lossy(&buffer);
         let mut lines = request_str.lines();
         let request_line = lines.next().unwrap_or_default();
         let (method, path) = parse_request_line(request_line);
-    
+
         // Find the empty line separating headers and body
         while let Some(line) = lines.next() {
             if line.is_empty() {
                 break;
             }
         }
-    
+
         let mut body = String::new();
         while let Some(line) = lines.next() {
             if line.is_empty() {
@@ -1267,18 +1316,18 @@ impl Executor {
             }
             body.push_str(&percent_decode_str(line).decode_utf8().unwrap());
         }
-    
+
         let matching = vec![method.to_string(), path.to_string()].join(" ");
-    
+
         let response = if let Some(code) = routes.get(&matching) {
             let body = Type::String(body);
-    
+
             self.memory
                 .entry("body".to_string())
                 .and_modify(|value| *value = body.clone())
                 .or_insert(body);
             self.show_variables();
-    
+
             self.evaluate_program(code.to_owned());
             format!(
                 "HTTP/1.1 200 OK\r\nContent-Type: {1}; charset=utf-8\r\n\r\n{0}",
@@ -1299,7 +1348,7 @@ impl Executor {
         };
         stream.write(response.as_bytes()).unwrap();
         stream.flush().unwrap();
-    }    
+    }
 
     fn server(&mut self, address: String, mut code: Type) {
         let listener = TcpListener::bind(address.clone()).unwrap();
