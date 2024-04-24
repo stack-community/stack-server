@@ -46,7 +46,7 @@
     [(POST /api) (
         body println
 
-        body (json) cast (number) get-json (number) cast (num) var
+        body (number) get-json (number) cast (num) var
         num prime? eval (result) var
 
         ({"number": <1>, "result": <2>}) 

@@ -4,7 +4,7 @@ import json
 # URLと送信するデータを定義
 url = 'http://127.0.0.1:8080/api'
 data = {
-    'number': 8762
+    'number': int(input("> "))
 }
 
 # JSON形式でデータを送信

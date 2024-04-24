@@ -202,10 +202,8 @@ impl Type {
     fn get_json(&mut self) -> Value {
         match self {
             Type::Json(j) => j.to_owned(),
-            Type::String(j) => {
-                dbg!(j.clone());
-                serde_json::from_str(j.as_str().trim_end_matches(char::from(0))).unwrap_or(json!({}))
-            }
+            Type::String(j) => serde_json::from_str(j)
+                .unwrap_or(json!({})),
             _ => json!({}),
         }
     }
@@ -1314,7 +1312,13 @@ impl Executor {
             if line.is_empty() {
                 break;
             }
-            body.push_str(&percent_decode_str(line).decode_utf8().unwrap());
+            body.push_str(
+                &percent_decode_str(line)
+                    .decode_utf8()
+                    .unwrap_or_default()
+                    .trim()
+                    .trim_end_matches(char::from(0)),
+            );
         }
 
         let matching = vec![method.to_string(), path.to_string()].join(" ");
