@@ -51,6 +51,6 @@
 
         ({"number": <1>, "result": <2>}) 
         (<1>) num replace (<2>) result replace
-        (text/json) swap
+        (application/json) swap
     )]
 ] start-server
