@@ -23,9 +23,14 @@
 )
 (prime?) var
 
-(127.0.0.1:8080)
 [
-    [(POST /) (
+    [(梶塚太智)　(Excel2019)]
+    [(霧雨魔理沙) (marisa)]
+] (auth) var
+
+(127.0.0.1:8888)
+[
+    [[(POST /) (auth)] (
         body println
         body (number=) () replace (arg) var
         
@@ -35,15 +40,19 @@
         arg (は素数です) (は素数ではありません)
         result if concat (result) var
 
-        (text/html) (index.html) read-file ({}) result replace
+        (text/html) (index.html) read-file
+        ({0}) user 0 get replace
+        ({1}) result replace
     )]
 
-    [(GET /) (
+    [[(GET /) (auth)] (
         (text/html)
-        (index.html) read-file ({}) (ここに判定結果が表示されます) replace
+        (index.html) read-file
+        ({0}) user 0 get replace
+        ({1}) (ここに判定結果が表示されます) replace
     )]
 
-    [(POST /api) (
+    [[(POST /api)] (
         body println
 
         body (number) get-json (number) cast (num) var

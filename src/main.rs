@@ -6,6 +6,7 @@ use serde_json::{json, Value};
 use std::collections::HashMap;
 use std::env;
 use std::fs::File;
+use base64;
 use std::io::{self, Error, Read, Write};
 use std::net::{TcpListener, TcpStream};
 use std::path::Path;
@@ -202,8 +203,7 @@ impl Type {
     fn get_json(&mut self) -> Value {
         match self {
             Type::Json(j) => j.to_owned(),
-            Type::String(j) => serde_json::from_str(j)
-                .unwrap_or(json!({})),
+            Type::String(j) => serde_json::from_str(j).unwrap_or(json!({})),
             _ => json!({}),
         }
     }
@@ -1291,7 +1291,7 @@ impl Executor {
         }
     }
 
-    fn handle(&mut self, mut stream: TcpStream, routes: HashMap<String, String>) {
+    fn handle(&mut self, mut stream: TcpStream, routes: HashMap<String, (String, bool)>) {
         let mut buffer = [0; 1024];
         stream.read(&mut buffer).unwrap();
 
@@ -1323,9 +1323,36 @@ impl Executor {
 
         let matching = vec![method.to_string(), path.to_string()].join(" ");
 
-        let response = if let Some(code) = routes.get(&matching) {
-            let body = Type::String(body);
+        let response = if let Some((code, auth)) = routes.get(&matching) {
+            
+            if *auth {
+                let mut auth: Type = self.memory.get("auth").unwrap_or(&Type::List(vec![])).clone();
+                let mut database: HashMap<String, String> = HashMap::new();
+                
+                for mut i in auth.get_list() {
+                    let mut i = i.get_list();
+                    database.insert(i[0].get_string(), i[1].get_string());
+                }
+                
+                
+                let (is_auth, (user, pass)) = authenticate(&request_str, database);
+                if !is_auth {
+                    let response = "HTTP/1.1 401 Unauthorized\r\nWWW-Authenticate: Basic realm=\"Restricted area\"\r\nContent-Type: text/plain\r\n\r\nUnauthorized".to_string();
+                    stream.write(response.as_bytes()).unwrap();
+                    stream.flush().unwrap();
+                    return;
+                }
 
+                let user_data = Type::List(vec![Type::String(user), Type::String(pass)]);
+                self.memory
+                    .entry("user".to_string())
+                    .and_modify(|value| *value = user_data.clone())
+                    .or_insert(user_data);
+                    self.show_variables();
+            }
+
+            let body = Type::String(body);
+        
             self.memory
                 .entry("body".to_string())
                 .and_modify(|value| *value = body.clone())
@@ -1341,7 +1368,7 @@ impl Executor {
         } else {
             format!(
                 "HTTP/1.1 404 NOT FOUND\r\nContent-Type: {1}; charset=utf-8\r\n\r\n{0}",
-                if let Some(code) = routes.get("not-found") {
+                if let Some((code, _))= routes.get("not-found") {
                     self.evaluate_program(code.to_owned());
                     self.pop_stack().get_string()
                 } else {
@@ -1358,11 +1385,17 @@ impl Executor {
         let listener = TcpListener::bind(address.clone()).unwrap();
         println!("Server is started on http://{address}");
 
-        let mut hashmap: HashMap<String, String> = HashMap::new();
+        let mut hashmap: HashMap<String, (String, bool)> = HashMap::new();
         for mut i in code.get_list() {
-            let matching = i.get_list()[0].get_string();
+            let mut matching = i.get_list()[0].get_list();
+            let route = matching[0].get_string();
+            let auth = if let Some(i) = matching.get(1) {
+                i.to_owned().get_string() == "auth"
+            } else {
+                false
+            };
             let value = i.get_list()[1].get_string();
-            hashmap.insert(matching, value);
+            hashmap.insert(route, (value, auth));
         }
 
         for stream in listener.incoming() {
@@ -1382,4 +1415,22 @@ fn parse_request_line(request_line: &str) -> (String, String) {
     let path = parts.get(1).unwrap_or(&"").to_string();
 
     (method, path)
+}
+
+fn authenticate(request_str: &str, database: HashMap<String, String>) -> (bool, (String, String)) {
+    let lines = request_str.lines();
+    for line in lines {
+        if line.starts_with("Authorization: Basic ") {
+            let encoded_credentials = line.trim_start_matches("Authorization: Basic ");
+            let decoded_credentials = base64::decode(encoded_credentials).unwrap_or_default();
+            let credentials = String::from_utf8_lossy(&decoded_credentials);
+            let mut parts = credentials.splitn(2, ':');
+            if let (Some(username), Some(password)) = (parts.next(), parts.next()) {
+                if let Some(expected_password) = database.get(username) {
+                    return (password == expected_password, (username.to_string(), password.to_string()));
+                }
+            }
+        }
+    }
+    (false, ("".to_string(), "".to_string()))
 }
