@@ -3,7 +3,7 @@ use clap::{App, Arg};
 use percent_encoding::percent_decode_str;
 use rand::seq::SliceRandom;
 use regex::Regex;
-use rusqlite::{Connection, Result, NO_PARAMS};
+use rusqlite::{Connection, Result};
 use serde_json::{json, Value};
 use std::collections::HashMap;
 use std::env;
@@ -1459,7 +1459,7 @@ fn sql(db_path: &str, sql_query: &str) -> Type {
         Err(_) => return Type::Error("pre-query".to_string()),
     };
 
-    let rows = match stmt.query_map(NO_PARAMS, |row| {
+    let rows = match stmt.query_map([], |row| {
         (0..row.column_names().len())
             .map(|i| row.get(i))
             .collect::<Result<Vec<String>>>()
@@ -1477,7 +1477,7 @@ fn sql(db_path: &str, sql_query: &str) -> Type {
                     .map(|x| Type::String(x.to_owned()))
                     .collect::<Vec<Type>>(),
             )),
-            Err(_) => return Type::Error("get-len".to_string()),
+            Err(_) => return Type::List(vec![]),
         }
     }
 
