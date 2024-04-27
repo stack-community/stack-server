@@ -1,12 +1,13 @@
+use base64;
 use clap::{App, Arg};
 use percent_encoding::percent_decode_str;
 use rand::seq::SliceRandom;
 use regex::Regex;
+use rusqlite::{Connection, Result, NO_PARAMS};
 use serde_json::{json, Value};
 use std::collections::HashMap;
 use std::env;
 use std::fs::File;
-use base64;
 use std::io::{self, Error, Read, Write};
 use std::net::{TcpListener, TcpStream};
 use std::path::Path;
@@ -1266,6 +1267,13 @@ impl Executor {
                 self.stack.push(Type::Json(json))
             }
 
+            // Control SQL
+            "sql" => {
+                let path = self.pop_stack().get_string();
+                let query = self.pop_stack().get_string();
+                self.stack.push(sql(&path, &query));
+            }
+
             // start web server
             "start-server" => {
                 let code: Type = self.pop_stack();
@@ -1324,17 +1332,19 @@ impl Executor {
         let matching = vec![method.to_string(), path.to_string()].join(" ");
 
         let response = if let Some((code, auth)) = routes.get(&matching) {
-            
             if *auth {
-                let mut auth: Type = self.memory.get("auth").unwrap_or(&Type::List(vec![])).clone();
+                let mut auth: Type = self
+                    .memory
+                    .get("auth")
+                    .unwrap_or(&Type::List(vec![]))
+                    .clone();
                 let mut database: HashMap<String, String> = HashMap::new();
-                
+
                 for mut i in auth.get_list() {
                     let mut i = i.get_list();
                     database.insert(i[0].get_string(), i[1].get_string());
                 }
-                
-                
+
                 let (is_auth, (user, pass)) = authenticate(&request_str, database);
                 if !is_auth {
                     let response = "HTTP/1.1 401 Unauthorized\r\nWWW-Authenticate: Basic realm=\"Restricted area\"\r\nContent-Type: text/plain\r\n\r\nUnauthorized".to_string();
@@ -1348,11 +1358,11 @@ impl Executor {
                     .entry("user".to_string())
                     .and_modify(|value| *value = user_data.clone())
                     .or_insert(user_data);
-                    self.show_variables();
+                self.show_variables();
             }
 
             let body = Type::String(body);
-        
+
             self.memory
                 .entry("body".to_string())
                 .and_modify(|value| *value = body.clone())
@@ -1368,7 +1378,7 @@ impl Executor {
         } else {
             format!(
                 "HTTP/1.1 404 NOT FOUND\r\nContent-Type: {1}; charset=utf-8\r\n\r\n{0}",
-                if let Some((code, _))= routes.get("not-found") {
+                if let Some((code, _)) = routes.get("not-found") {
                     self.evaluate_program(code.to_owned());
                     self.pop_stack().get_string()
                 } else {
@@ -1427,10 +1437,49 @@ fn authenticate(request_str: &str, database: HashMap<String, String>) -> (bool, 
             let mut parts = credentials.splitn(2, ':');
             if let (Some(username), Some(password)) = (parts.next(), parts.next()) {
                 if let Some(expected_password) = database.get(username) {
-                    return (password == expected_password, (username.to_string(), password.to_string()));
+                    return (
+                        password == expected_password,
+                        (username.to_string(), password.to_string()),
+                    );
                 }
             }
         }
     }
     (false, ("".to_string(), "".to_string()))
+}
+
+fn sql(db_path: &str, sql_query: &str) -> Type {
+    let conn = match Connection::open(db_path) {
+        Ok(connection) => connection,
+        Err(_) => return Type::Error("sql-connect".to_string()),
+    };
+
+    let mut stmt = match conn.prepare(sql_query) {
+        Ok(statement) => statement,
+        Err(_) => return Type::Error("pre-query".to_string()),
+    };
+
+    let rows = match stmt.query_map(NO_PARAMS, |row| {
+        (0..row.column_names().len())
+            .map(|i| row.get(i))
+            .collect::<Result<Vec<String>>>()
+    }) {
+        Ok(rows) => rows,
+        Err(_) => return Type::Error("exe-query".to_string()),
+    };
+
+    let mut result = Vec::new();
+    for row in rows {
+        match row {
+            Ok(values) => result.push(Type::List(
+                values
+                    .iter()
+                    .map(|x| Type::String(x.to_owned()))
+                    .collect::<Vec<Type>>(),
+            )),
+            Err(_) => return Type::Error("get-len".to_string()),
+        }
+    }
+
+    Type::List(result)
 }
