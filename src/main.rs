@@ -14,6 +14,7 @@ use std::path::Path;
 use std::thread::{self, sleep};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use sys_info::{cpu_num, cpu_speed, hostname, mem_info, os_release, os_type};
+use tera::{Tera, Context};
 
 fn main() {
     let matches = App::new("Stack Server")
@@ -209,7 +210,6 @@ impl Type {
         }
     }
 }
-
 /// Manage program execution
 #[derive(Clone, Debug)]
 struct Executor {
@@ -1272,6 +1272,26 @@ impl Executor {
                 let path = self.pop_stack().get_string();
                 let query = self.pop_stack().get_string();
                 self.stack.push(sql(&path, &query));
+            }
+
+            // Templates of jinja2
+            "template" => {
+                let mut tera = Tera::default();
+                let render_object = if let Type::Object(_, obj) = self.pop_stack() {obj} else {
+                    self.stack.push(Type::Error("not-object".to_string()))
+                    ;return 
+                };
+                let template_string = self.pop_stack().get_string();
+
+                let mut context = Context::new();
+            
+                for (key , mut value) in render_object {
+                    context.insert(key, &value.get_string())
+                }
+
+                // テンプレートをレンダリング
+                let rendered = tera.render_str(&template_string, &context).unwrap();
+                self.stack.push(Type::String(rendered));
             }
 
             // start web server

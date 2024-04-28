@@ -28,6 +28,11 @@
     [(霧雨魔理沙) (marisa)]
 ] (auth) var
 
+[(reply) 
+    [(user)]
+    [(result)]
+] (reply) var
+
 (127.0.0.1:8888)
 [
     [[(POST /) (auth)] (
@@ -41,15 +46,15 @@
         result if concat (result) var
 
         (text/html) (index.html) read-file
-        ({0}) user 0 get replace
-        ({1}) result replace
+        reply [user 0 get result] instance
+        template
     )]
 
     [[(GET /) (auth)] (
         (text/html)
         (index.html) read-file
-        ({0}) user 0 get replace
-        ({1}) (ここに判定結果が表示されます) replace
+        reply [user 0 get (ここに判定結果が表示されます)] instance
+        template
     )]
 
     [[(POST /api)] (
