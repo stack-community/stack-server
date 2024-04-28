@@ -24,8 +24,8 @@
 (prime?) var
 
 [
-    [(梶塚太智)　(Excel2019)]
-    [(霧雨魔理沙) (marisa)]
+    [(梶塚太智)　(StackServer2024)]
+    [(佐藤蓮) (3.1415926535897932384626)]
 ] (auth) var
 
 [(reply) 
@@ -33,7 +33,7 @@
     [(result)]
 ] (reply) var
 
-(127.0.0.1:8888)
+(0.0.0.0:8887)
 [
     [[(POST /) (auth)] (
         body println
@@ -67,4 +67,20 @@
         (<1>) num replace (<2>) result replace
         (application/json) swap
     )]
+
+    [[(GET /new)] (
+        (text/html) (new.html) read-file
+    )]
+
+    [[(POST /new)] (
+        body println
+        body (&) split (i) (
+            i (=) split (splited) var
+            splited 1 get splited 0 get var
+        ) for
+
+        auth [name pass] append (auth) var
+
+        (text/html) (ご登録ありがとうございました)
+    )] 
 ] start-server
