@@ -23,15 +23,21 @@
 )
 (prime?) var
 
-users.stk read-file eval (auth) var
+(users.stk) read-file eval (auth) var
 
 [(reply) 
     [(user)]
     [(result)]
 ] (reply) var
 
-(0.0.0.0:8887)
+(127.0.0.1:8888)
 [
+    [[(GET /) (auth)] (
+        (text/html) (index.html) read-file
+        reply [user 0 get (ここに判定結果が表示されます)] instance
+        template
+    )]
+
     [[(POST /) (auth)] (
         body println
         body (number=) () replace (arg) var
@@ -44,13 +50,6 @@ users.stk read-file eval (auth) var
 
         (text/html) (index.html) read-file
         reply [user 0 get result] instance
-        template
-    )]
-
-    [[(GET /) (auth)] (
-        (text/html)
-        (index.html) read-file
-        reply [user 0 get (ここに判定結果が表示されます)] instance
         template
     )]
 
@@ -80,5 +79,12 @@ users.stk read-file eval (auth) var
         auth (users.stk) write-file
 
         (text/html) (ご登録ありがとうございました)
+    )]
+
+    [[(GET /delete) (auth)] (
+        auth copy user index del (auth) var
+        auth (users.stk) write-file
+        (text/html) 
+        (ご利用ありがとうございました。<ber>またのご利用お待ちしております。)
     )] 
 ] start-server
