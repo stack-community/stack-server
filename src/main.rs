@@ -1506,9 +1506,14 @@ fn sql(db_path: &str, sql_query: &str) -> Type {
 
     // Get table's rows
     let rows = match stmt.query_map([], |row| {
-        (0..row.column_names().len())
-            .map(|i| row.get(i))
-            .collect::<Result<Vec<String>>>()
+        let result: Result<Vec<(String, String)>, rusqlite::Error> = Ok((0..row.column_count())
+            .map(|index| {
+                let column = row.column_name(index).unwrap().to_string();
+                let value = row.get_raw(index).as_str().unwrap_or("err").to_string();
+                (column, value)
+            })
+            .collect());
+        result
     }) {
         Ok(rows) => rows,
         Err(_) => return Type::Error("exe-query".to_string()),
@@ -1518,12 +1523,13 @@ fn sql(db_path: &str, sql_query: &str) -> Type {
     let mut result = Vec::new();
     for row in rows {
         match row {
-            Ok(values) => result.push(Type::List(
-                values
-                    .iter()
-                    .map(|x| Type::String(x.to_owned()))
-                    .collect::<Vec<Type>>(),
-            )),
+            Ok(values) => result.push({
+                let mut object = HashMap::new();
+                for (property, value) in values {
+                    object.insert(property, Type::String(value));
+                }
+                Type::Object("table".to_string(), object)
+            }),
             Err(_) => return Type::List(vec![]),
         }
     }
