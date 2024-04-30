@@ -14,7 +14,7 @@ use std::path::Path;
 use std::thread::{self, sleep};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use sys_info::{cpu_num, cpu_speed, hostname, mem_info, os_release, os_type};
-use tera::{Tera, Context};
+use tera::{Context, Tera};
 
 fn main() {
     let matches = App::new("Stack Server")
@@ -1274,22 +1274,27 @@ impl Executor {
                 self.stack.push(sql(&path, &query));
             }
 
-            // Templates of jinja2
+            // Templates processing by jinja2
             "template" => {
                 let mut tera = Tera::default();
-                let render_object = if let Type::Object(_, obj) = self.pop_stack() {obj} else {
-                    self.stack.push(Type::Error("not-object".to_string()))
-                    ;return 
+
+                // Get render value from object
+                let render_object = if let Type::Object(_, obj) = self.pop_stack() {
+                    obj
+                } else {
+                    self.stack.push(Type::Error("not-object".to_string()));
+                    return;
                 };
                 let template_string = self.pop_stack().get_string();
 
                 let mut context = Context::new();
-            
-                for (key , mut value) in render_object {
+
+                // Parse type from object to context
+                for (key, mut value) in render_object {
                     context.insert(key, &value.get_string())
                 }
 
-                // テンプレートをレンダリング
+                // rendering string
                 let rendered = tera.render_str(&template_string, &context).unwrap();
                 self.stack.push(Type::String(rendered));
             }
@@ -1319,6 +1324,7 @@ impl Executor {
         }
     }
 
+    /// Http request handler
     fn handle(&mut self, mut stream: TcpStream, routes: HashMap<String, (String, bool)>) {
         let mut buffer = [0; 1024];
         stream.read(&mut buffer).unwrap();
@@ -1335,6 +1341,7 @@ impl Executor {
             }
         }
 
+        // Get request body
         let mut body = String::new();
         while let Some(line) = lines.next() {
             if line.is_empty() {
@@ -1349,23 +1356,28 @@ impl Executor {
             );
         }
 
+        // Generate string to match handler option
         let matching = vec![method.to_string(), path.to_string()].join(" ");
 
         let response = if let Some((code, auth)) = routes.get(&matching) {
             if *auth {
+                // Get user data to auth
                 let mut auth: Type = self
                     .memory
                     .get("auth")
                     .unwrap_or(&Type::List(vec![]))
                     .clone();
-                let mut database: HashMap<String, String> = HashMap::new();
 
+                // Generate user database
+                let mut database: HashMap<String, String> = HashMap::new();
                 for mut i in auth.get_list() {
                     let mut i = i.get_list();
                     database.insert(i[0].get_string(), i[1].get_string());
                 }
 
                 let (is_auth, (user, pass)) = authenticate(&request_str, database);
+
+                // Processing when fault to authenticate
                 if !is_auth {
                     let response = "HTTP/1.1 401 Unauthorized\r\nWWW-Authenticate: Basic realm=\"Restricted area\"\r\nContent-Type: text/plain\r\n\r\nUnauthorized".to_string();
                     stream.write(response.as_bytes()).unwrap();
@@ -1373,6 +1385,7 @@ impl Executor {
                     return;
                 }
 
+                // Store user data on the variable
                 let user_data = Type::List(vec![Type::String(user), Type::String(pass)]);
                 self.memory
                     .entry("user".to_string())
@@ -1383,6 +1396,7 @@ impl Executor {
 
             let body = Type::String(body);
 
+            // Store request body on the variable
             self.memory
                 .entry("body".to_string())
                 .and_modify(|value| *value = body.clone())
@@ -1396,6 +1410,7 @@ impl Executor {
                 self.pop_stack().get_string()
             )
         } else {
+            // Processing when user access pages that not exist
             format!(
                 "HTTP/1.1 404 NOT FOUND\r\nContent-Type: {1}; charset=utf-8\r\n\r\n{0}",
                 if let Some((code, _)) = routes.get("not-found") {
@@ -1407,14 +1422,17 @@ impl Executor {
                 self.pop_stack().get_string()
             )
         };
+
         stream.write(response.as_bytes()).unwrap();
         stream.flush().unwrap();
     }
 
+    // Main web server function
     fn server(&mut self, address: String, mut code: Type) {
         let listener = TcpListener::bind(address.clone()).unwrap();
         println!("Server is started on http://{address}");
 
+        // Get route handler options in the Stack code
         let mut hashmap: HashMap<String, (String, bool)> = HashMap::new();
         for mut i in code.get_list() {
             let mut matching = i.get_list()[0].get_list();
@@ -1439,6 +1457,7 @@ impl Executor {
     }
 }
 
+/// To processing
 fn parse_request_line(request_line: &str) -> (String, String) {
     let parts: Vec<&str> = request_line.trim().split_whitespace().collect();
     let method = parts.get(0).unwrap_or(&"").to_string();
@@ -1447,13 +1466,17 @@ fn parse_request_line(request_line: &str) -> (String, String) {
     (method, path)
 }
 
+// Basic user authenticate
 fn authenticate(request_str: &str, database: HashMap<String, String>) -> (bool, (String, String)) {
     let lines = request_str.lines();
     for line in lines {
         if line.starts_with("Authorization: Basic ") {
+            // Decode string in the request
             let encoded_credentials = line.trim_start_matches("Authorization: Basic ");
             let decoded_credentials = base64::decode(encoded_credentials).unwrap_or_default();
             let credentials = String::from_utf8_lossy(&decoded_credentials);
+
+            // authenticate username and password
             let mut parts = credentials.splitn(2, ':');
             if let (Some(username), Some(password)) = (parts.next(), parts.next()) {
                 if let Some(expected_password) = database.get(username) {
@@ -1468,17 +1491,20 @@ fn authenticate(request_str: &str, database: HashMap<String, String>) -> (bool, 
     (false, ("".to_string(), "".to_string()))
 }
 
+// Execute SQL query and return table data
 fn sql(db_path: &str, sql_query: &str) -> Type {
     let conn = match Connection::open(db_path) {
         Ok(connection) => connection,
         Err(_) => return Type::Error("sql-connect".to_string()),
     };
 
+    // preprocessing to execution query
     let mut stmt = match conn.prepare(sql_query) {
         Ok(statement) => statement,
         Err(_) => return Type::Error("pre-query".to_string()),
     };
 
+    // Get table's rows
     let rows = match stmt.query_map([], |row| {
         (0..row.column_names().len())
             .map(|i| row.get(i))
@@ -1488,6 +1514,7 @@ fn sql(db_path: &str, sql_query: &str) -> Type {
         Err(_) => return Type::Error("exe-query".to_string()),
     };
 
+    // Parse type for Stack
     let mut result = Vec::new();
     for row in rows {
         match row {
@@ -1501,5 +1528,6 @@ fn sql(db_path: &str, sql_query: &str) -> Type {
         }
     }
 
+    // Return table as list
     Type::List(result)
 }
