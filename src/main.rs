@@ -133,7 +133,7 @@ impl Type {
     }
 
     /// Get string form data
-    fn get_string(&mut self) -> String {
+    fn get_string(&self) -> String {
         match self {
             Type::String(s) => s.to_string(),
             Type::Number(i) => i.to_string(),
@@ -148,7 +148,7 @@ impl Type {
     }
 
     /// Get number from data
-    fn get_number(&mut self) -> f64 {
+    fn get_number(&self) -> f64 {
         match self {
             Type::String(s) => s.parse().unwrap_or(0.0),
             Type::Number(i) => *i,
@@ -167,7 +167,7 @@ impl Type {
     }
 
     /// Get bool from data
-    fn get_bool(&mut self) -> bool {
+    fn get_bool(&self) -> bool {
         match self {
             Type::String(s) => !s.is_empty(),
             Type::Number(i) => *i != 0.0,
@@ -180,7 +180,7 @@ impl Type {
     }
 
     /// Get list form data
-    fn get_list(&mut self) -> Vec<Type> {
+    fn get_list(&self) -> Vec<Type> {
         match self {
             Type::String(s) => s
                 .to_string()
@@ -1325,7 +1325,7 @@ impl Executor {
     }
 
     /// Http request handler
-    fn handle(&mut self, mut stream: TcpStream, routes: HashMap<String, (String, bool)>) {
+    fn handle(&mut self, mut stream: TcpStream, routes: HashMap<String, (String, bool, Type)>) {
         let mut buffer = [0; 1024];
         stream.read(&mut buffer).unwrap();
 
@@ -1359,18 +1359,13 @@ impl Executor {
         // Generate string to match handler option
         let matching = vec![method.to_string(), path.to_string()].join(" ");
 
-        let response = if let Some((code, auth)) = routes.get(&matching) {
+        let response = if let Some((code, auth, auth_data)) = routes.get(&matching).clone() {
             if *auth {
-                // Get user data to auth
-                let mut auth: Type = self
-                    .memory
-                    .get("auth")
-                    .unwrap_or(&Type::List(vec![]))
-                    .clone();
+                let auth: &Type = auth_data;
 
                 // Generate user database
                 let mut database: HashMap<String, String> = HashMap::new();
-                for mut i in auth.get_list() {
+                for i in &mut auth.get_list() {
                     let mut i = i.get_list();
                     database.insert(i[0].get_string(), i[1].get_string());
                 }
@@ -1385,23 +1380,15 @@ impl Executor {
                     return;
                 }
 
-                // Store user data on the variable
+                // Push user data on the stack
                 let user_data = Type::List(vec![Type::String(user), Type::String(pass)]);
-                self.memory
-                    .entry("user".to_string())
-                    .and_modify(|value| *value = user_data.clone())
-                    .or_insert(user_data);
-                self.show_variables();
+                self.stack.push(user_data);
             }
 
             let body = Type::String(body);
 
-            // Store request body on the variable
-            self.memory
-                .entry("body".to_string())
-                .and_modify(|value| *value = body.clone())
-                .or_insert(body);
-            self.show_variables();
+            // Push request body on the stack
+            self.stack.push(body);
 
             self.evaluate_program(code.to_owned());
             format!(
@@ -1413,7 +1400,7 @@ impl Executor {
             // Processing when user access pages that not exist
             format!(
                 "HTTP/1.1 404 NOT FOUND\r\nContent-Type: {1}; charset=utf-8\r\n\r\n{0}",
-                if let Some((code, _)) = routes.get("not-found") {
+                if let Some((code, _, _)) = routes.get("not-found") {
                     self.evaluate_program(code.to_owned());
                     self.pop_stack().get_string()
                 } else {
@@ -1433,17 +1420,21 @@ impl Executor {
         println!("Server is started on http://{address}");
 
         // Get route handler options in the Stack code
-        let mut hashmap: HashMap<String, (String, bool)> = HashMap::new();
+        let mut hashmap: HashMap<String, (String, bool, Type)> = HashMap::new();
         for mut i in code.get_list() {
             let mut matching = i.get_list()[0].get_list();
             let route = matching[0].get_string();
-            let auth = if let Some(i) = matching.get(1) {
-                i.to_owned().get_string() == "auth"
+            let is_auth: bool; 
+            let mut user_data = Type::List(vec![]);
+
+            if let Some(i) = matching.get(2) {
+                user_data = i.to_owned();
+                is_auth = matching[1].get_string() == "auth"
             } else {
-                false
+                is_auth = false
             };
             let value = i.get_list()[1].get_string();
-            hashmap.insert(route, (value, auth));
+            hashmap.insert(route, (value, is_auth, user_data));
         }
 
         for stream in listener.incoming() {

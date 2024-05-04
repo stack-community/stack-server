@@ -32,13 +32,15 @@
 
 (127.0.0.1:8888)
 [
-    [[(GET /) (auth)] (
+    [[(GET /) (auth) auth] (
+        (body) var (user) var
         (text/html) (index.html) read-file
         reply [user 0 get (ここに判定結果が表示されます)] instance
         template
     )]
 
-    [[(POST /) (auth)] (
+    [[(POST /) (auth) auth] (
+        (body) var (user) var
         body println
         body (number=) () replace (arg) var
         
