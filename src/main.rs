@@ -1125,7 +1125,7 @@ impl Executor {
             // Generate a instance of object
             "instance" => {
                 let data = self.pop_stack().get_list();
-                let mut class = self.pop_stack().get_list();
+                let class = self.pop_stack().get_list();
                 let mut object: HashMap<String, Type> = HashMap::new();
 
                 let name = if !class.is_empty() {
@@ -1138,7 +1138,7 @@ impl Executor {
 
                 let mut index = 0;
                 for item in &mut class.to_owned()[1..class.len()].iter() {
-                    let mut item = item.to_owned();
+                    let item = item.to_owned();
                     if item.get_list().len() == 1 {
                         let element = match data.get(index) {
                             Some(value) => value,
@@ -1290,7 +1290,7 @@ impl Executor {
                 let mut context = Context::new();
 
                 // Parse type from object to context
-                for (key, mut value) in render_object {
+                for (key, value) in render_object {
                     context.insert(key, &value.get_string())
                 }
 
@@ -1366,7 +1366,7 @@ impl Executor {
                 // Generate user database
                 let mut database: HashMap<String, String> = HashMap::new();
                 for i in &mut auth.get_list() {
-                    let mut i = i.get_list();
+                    let i = i.get_list();
                     database.insert(i[0].get_string(), i[1].get_string());
                 }
 
@@ -1415,16 +1415,16 @@ impl Executor {
     }
 
     // Main web server function
-    fn server(&mut self, address: String, mut code: Type) {
+    fn server(&mut self, address: String, code: Type) {
         let listener = TcpListener::bind(address.clone()).unwrap();
         println!("Server is started on http://{address}");
 
         // Get route handler options in the Stack code
         let mut hashmap: HashMap<String, (String, bool, Type)> = HashMap::new();
-        for mut i in code.get_list() {
-            let mut matching = i.get_list()[0].get_list();
+        for i in code.get_list() {
+            let matching = i.get_list()[0].get_list();
             let route = matching[0].get_string();
-            let is_auth: bool; 
+            let is_auth: bool;
             let mut user_data = Type::List(vec![]);
 
             if let Some(i) = matching.get(2) {

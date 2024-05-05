@@ -71,6 +71,7 @@
     )]
 
     [[(POST /new)] (
+        (body) var
         body println
         body (&) split (i) (
             i (=) split (splited) var
@@ -78,15 +79,17 @@
         ) for
 
         auth [name pass] append (auth) var
+        auth println
         auth (users.stk) write-file
 
         (text/html) (ご登録ありがとうございました)
     )]
 
     [[(GET /delete) (auth)] (
+        (user) var
         auth copy user index del (auth) var
         auth (users.stk) write-file
         (text/html) 
-        (ご利用ありがとうございました。<ber>またのご利用お待ちしております。)
+        (ご利用ありがとうございました。<br>またのご利用お待ちしております。)
     )] 
 ] start-server
