@@ -1325,7 +1325,7 @@ impl Executor {
     }
 
     /// Http request handler
-    fn handle(&mut self, mut stream: TcpStream, routes: HashMap<String, (String, bool, Type)>) {
+    fn handle(&mut self, mut stream: TcpStream, routes: HashMap<String, (String, bool, String)>) {
         let mut buffer = [0; 1024];
         stream.read(&mut buffer).unwrap();
 
@@ -1361,7 +1361,7 @@ impl Executor {
 
         let response = if let Some((code, auth, auth_data)) = routes.get(&matching).clone() {
             if *auth {
-                let auth: &Type = auth_data;
+                let auth: &Type =&{self.evaluate_program(auth_data.to_owned()); self.pop_stack()};
 
                 // Generate user database
                 let mut database: HashMap<String, String> = HashMap::new();
@@ -1420,15 +1420,15 @@ impl Executor {
         println!("Server is started on http://{address}");
 
         // Get route handler options in the Stack code
-        let mut hashmap: HashMap<String, (String, bool, Type)> = HashMap::new();
+        let mut hashmap: HashMap<String, (String, bool, String)> = HashMap::new();
         for i in code.get_list() {
             let matching = i.get_list()[0].get_list();
             let route = matching[0].get_string();
             let is_auth: bool;
-            let mut user_data = Type::List(vec![]);
+            let mut user_data = "".to_string();
 
             if let Some(i) = matching.get(2) {
-                user_data = i.to_owned();
+                user_data = i.to_owned().get_string();
                 is_auth = matching[1].get_string() == "auth"
             } else {
                 is_auth = false

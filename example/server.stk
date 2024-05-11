@@ -32,14 +32,14 @@
 
 (127.0.0.1:8888)
 [
-    [[(GET /) (auth) auth] (
+    [[(GET /) (auth) (auth)] (
         (body) var (user) var
         (text/html) (index.html) read-file
         reply [user 0 get (ここに判定結果が表示されます)] instance
         template
     )]
 
-    [[(POST /) (auth) auth] (
+    [[(POST /) (auth) (auth)] (
         (body) var (user) var
         body println
         body (number=) () replace (arg) var
@@ -85,11 +85,11 @@
         (text/html) (ご登録ありがとうございました)
     )]
 
-    [[(GET /delete) (auth)] (
+    [[(GET /delete) (auth) (auth)] (
         (user) var
-        auth copy user index del (auth) var
+        auth copy user index del (auth) var 
         auth (users.stk) write-file
-        (text/html) 
-        (ご利用ありがとうございました。<br>またのご利用お待ちしております。)
+        
+        (text/html) (ご利用ありがとうございました。<br>またのご利用お待ちしております。)
     )] 
 ] start-server
