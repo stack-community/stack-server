@@ -1,0 +1,10 @@
+(SELECT * FROM Customers;) (users.db) sql 
+(i) (
+    i all sort　(j) (
+        j print
+        (: ) print
+        i j property print    
+        (\n) print
+    ) for 
+    (\n) print
+) for

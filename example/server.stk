@@ -86,7 +86,7 @@
     )]
 
     [[(GET /delete) (auth) (auth)] (
-        (user) var
+        pop (user) var
         auth copy user index del (auth) var 
         auth (users.stk) write-file
         
