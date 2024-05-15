@@ -6,7 +6,7 @@
 
     <h1>Stack Server 2024</h1>
 
-    <p>ようこそ、{0}さん！</p>
+    <p>ようこそ、{{ user }}！</p>
     <p>Stack Serverは誰でも容易にWebソリューションを構築できるStackプログラミング言語のディストリビューションです。</p>
     <p>もちろん、このサイトもStack Serverで動いています</p>
     
@@ -14,9 +14,8 @@
     
     <form action="/" method="post">
         <input type="number" id="number" name="number" required>
-    
         <input type="submit" value="判定">
     </form>
 
-    <p>{1}</p>
+    <p>{{ result }}</p>
 </html>
