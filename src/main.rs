@@ -1332,7 +1332,8 @@ impl Executor {
         let request_str = String::from_utf8_lossy(&buffer);
         let mut lines = request_str.lines();
         let request_line = lines.next().unwrap_or_default();
-        let (method, path) = parse_request_line(request_line);
+        let (method, path) = parse_request_line(request_line, " ");
+        let (path, query) = parse_request_line(&path, "?");
 
         // Find the empty line separating headers and body
         while let Some(line) = lines.next() {
@@ -1342,7 +1343,7 @@ impl Executor {
         }
 
         // Get request body
-        let mut body = String::new();
+        let mut body = query;
         while let Some(line) = lines.next() {
             if line.is_empty() {
                 break;
@@ -1361,7 +1362,10 @@ impl Executor {
 
         let response = if let Some((code, auth, auth_data)) = routes.get(&matching).clone() {
             if *auth {
-                let auth: &Type =&{self.evaluate_program(auth_data.to_owned()); self.pop_stack()};
+                let auth: &Type = &{
+                    self.evaluate_program(auth_data.to_owned());
+                    self.pop_stack()
+                };
 
                 // Generate user database
                 let mut database: HashMap<String, String> = HashMap::new();
@@ -1449,8 +1453,8 @@ impl Executor {
 }
 
 /// To processing
-fn parse_request_line(request_line: &str) -> (String, String) {
-    let parts: Vec<&str> = request_line.trim().split_whitespace().collect();
+fn parse_request_line(request_line: &str, key: &str) -> (String, String) {
+    let parts: Vec<&str> = request_line.trim().split(key).collect();
     let method = parts.get(0).unwrap_or(&"").to_string();
     let path = parts.get(1).unwrap_or(&"").to_string();
 

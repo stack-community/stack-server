@@ -33,15 +33,14 @@
 (127.0.0.1:8888)
 [
     [[(GET /) (auth) (auth)] (
-        (body) var (user) var
+        (body) var (user) var user println
         (text/html) (index.html) read-file
-        reply [user 0 get (ここに判定結果が表示されます)] instance
-        template
+        reply [user 0 get (ここに判定結果が表示されます)]
+        instance template
     )]
 
     [[(POST /) (auth) (auth)] (
-        (body) var (user) var
-        body println
+        (body) var (user) var body println
         body (number=) () replace (arg) var
         
         arg ([0-9]+) regex () join (number) cast 
@@ -73,6 +72,7 @@
     [[(POST /new)] (
         (body) var
         body println
+        
         body (&) split (i) (
             i (=) split (splited) var
             splited 1 get splited 0 get var
