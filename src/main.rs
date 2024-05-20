@@ -8,7 +8,8 @@ use serde_json::{json, Value};
 use std::collections::HashMap;
 use std::env;
 use std::fs::File;
-use std::io::{self, Error, Read, Write};
+use std::io::{self, BufReader, Read};
+use std::io::{Error, Write};
 use std::net::{TcpListener, TcpStream};
 use std::path::Path;
 use std::thread::{self, sleep};
@@ -716,6 +717,27 @@ impl Executor {
                 };
             }
 
+            "read-binary" => {
+                fn read_binary_file(path: String) -> io::Result<Vec<u8>> {
+                    let file = File::open(Path::new(&path))?;
+                    let mut buf_reader = BufReader::new(file);
+                    let mut buffer = Vec::new();
+                    buf_reader.read_to_end(&mut buffer)?;
+                    Ok(buffer)
+                }
+
+                let binary = if let Ok(i) = read_binary_file(self.pop_stack().get_string()) {
+                    i
+                } else {
+                    self.stack.push(Type::Error("read-binary".to_string()));
+                    return;
+                };
+
+                self.stack.push(Type::List(
+                    binary.iter().map(|x| Type::Number(*x as f64)).collect(),
+                ));
+            }
+
             // Standard input
             "input" => {
                 let prompt = self.pop_stack().get_string();
@@ -1360,7 +1382,7 @@ impl Executor {
         // Generate string to match handler option
         let matching = vec![method.to_string(), path.to_string()].join(" ");
 
-        let response = if let Some((code, auth, auth_data)) = routes.get(&matching).clone() {
+        if let Some((code, auth, auth_data)) = routes.get(&matching).clone() {
             if *auth {
                 let auth: &Type = &{
                     self.evaluate_program(auth_data.to_owned());
@@ -1395,27 +1417,57 @@ impl Executor {
             self.stack.push(body);
 
             self.evaluate_program(code.to_owned());
-            format!(
-                "HTTP/1.1 200 OK\r\nContent-Type: {1}; charset=utf-8\r\n\r\n{0}",
-                self.pop_stack().get_string(),
-                self.pop_stack().get_string()
-            )
+
+            let response_value = self.pop_stack();
+            if let Type::List(i) = response_value.clone() {
+                let value = [
+                    format!(
+                        "HTTP/1.1 200 OK\r\nContent-Type: {};\r\n\r\n",
+                        self.pop_stack().get_string()
+                    )
+                    .as_bytes(),
+                    (i.iter()
+                        .map(|x| x.get_number() as u8)
+                        .collect::<Vec<u8>>()
+                        .as_slice()),
+                ]
+                .as_slice()
+                .concat();
+
+                stream.write(&value).unwrap();
+                stream.flush().unwrap();
+            }
+            stream
+                .write(
+                    format!(
+                        "HTTP/1.1 200 OK\r\nContent-Type: {1}; charset=utf-8\r\n\r\n{0}",
+                        response_value.get_string(),
+                        self.pop_stack().get_string()
+                    )
+                    .as_bytes(),
+                )
+                .unwrap();
+            stream.flush().unwrap();
         } else {
             // Processing when user access pages that not exist
-            format!(
-                "HTTP/1.1 404 NOT FOUND\r\nContent-Type: {1}; charset=utf-8\r\n\r\n{0}",
-                if let Some((code, _, _)) = routes.get("not-found") {
-                    self.evaluate_program(code.to_owned());
-                    self.pop_stack().get_string()
-                } else {
-                    "404 - Not found".to_string()
-                },
-                self.pop_stack().get_string()
-            )
-        };
 
-        stream.write(response.as_bytes()).unwrap();
-        stream.flush().unwrap();
+            stream
+                .write(
+                    format!(
+                        "HTTP/1.1 404 NOT FOUND\r\nContent-Type: {1}; charset=utf-8\r\n\r\n{0}",
+                        if let Some((code, _, _)) = routes.get("not-found") {
+                            self.evaluate_program(code.to_owned());
+                            self.pop_stack().get_string()
+                        } else {
+                            "404 - Not found".to_string()
+                        },
+                        self.pop_stack().get_string()
+                    )
+                    .as_bytes(),
+                )
+                .unwrap();
+            stream.flush().unwrap();
+        };
     }
 
     // Main web server function
