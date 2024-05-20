@@ -1501,10 +1501,25 @@ fn sql(db_path: &str, sql_query: &str) -> Type {
 
     // Get table's rows
     let rows = match stmt.query_map([], |row| {
-        let result: Result<Vec<(String, String)>, rusqlite::Error> = Ok((0..row.column_count())
+        let result: Result<Vec<(String, Type)>, rusqlite::Error> = Ok((0..row.column_count())
             .map(|index| {
                 let column = row.column_name(index).unwrap().to_string();
-                let value = row.get_raw(index).as_str().unwrap_or("err").to_string();
+                let value = {
+                    let value = row.get_raw(index);
+                    if let Ok(i) = value.as_str() {
+                        Type::String(i.to_string())
+                    } else {
+                        if let Ok(i) = value.as_i64() {
+                            Type::Number(i as f64)
+                        } else {
+                            if let Ok(i) = value.as_f64() {
+                                Type::Number(i)
+                            } else {
+                                Type::Error("parse-db".to_string())
+                            }
+                        }
+                    }
+                };
                 (column, value)
             })
             .collect());
@@ -1521,7 +1536,7 @@ fn sql(db_path: &str, sql_query: &str) -> Type {
             Ok(values) => result.push({
                 let mut object = HashMap::new();
                 for (property, value) in values {
-                    object.insert(property, Type::String(value));
+                    object.insert(property, value);
                 }
                 Type::Object("table".to_string(), object)
             }),
