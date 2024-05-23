@@ -111,6 +111,7 @@ enum Type {
     Json(Value),
     Object(String, HashMap<String, Type>),
     Error(String),
+    Binary(Vec<u8>),
 }
 
 /// Implement methods
@@ -127,9 +128,8 @@ impl Type {
             }
             Type::Json(j) => serde_json::to_string_pretty(&j).unwrap_or("{}".to_string()),
             Type::Error(err) => format!("error:{err}"),
-            Type::Object(name, _) => {
-                format!("Object<{name}>")
-            }
+            Type::Object(name, _) => format!("Object<{name}>"),
+            Type::Binary(i) => format!("Binary<{}>", i.len()),
         }
     }
 
@@ -142,9 +142,8 @@ impl Type {
             Type::List(l) => Type::List(l.to_owned()).display(),
             Type::Json(j) => j.as_str().unwrap_or("").to_string(),
             Type::Error(err) => format!("error:{err}"),
-            Type::Object(name, _) => {
-                format!("Object<{name}>")
-            }
+            Type::Object(name, _) => format!("Object<{name}>"),
+            Type::Binary(i) => format!("Binary<{}>", i.len()),
         }
     }
 
@@ -164,6 +163,7 @@ impl Type {
             Type::List(l) => l.len() as f64,
             Type::Error(e) => e.parse().unwrap_or(0f64),
             Type::Object(_, object) => object.len() as f64,
+            Type::Binary(i) => i.len() as f64,
         }
     }
 
@@ -177,6 +177,7 @@ impl Type {
             Type::Json(j) => j.as_bool().unwrap_or(false),
             Type::Error(e) => e.parse().unwrap_or(false),
             Type::Object(_, object) => object.is_empty(),
+            Type::Binary(i) => !i.is_empty(),
         }
     }
 
@@ -200,6 +201,7 @@ impl Type {
             }
             Type::Error(e) => vec![Type::Error(e.to_string())],
             Type::Object(_, object) => object.values().map(|x| x.to_owned()).collect::<Vec<Type>>(),
+            Type::Binary(i) => i.iter().map(|x| Type::Number(*x as f64)).collect(),
         }
     }
 
@@ -733,9 +735,7 @@ impl Executor {
                     return;
                 };
 
-                self.stack.push(Type::List(
-                    binary.iter().map(|x| Type::Number(*x as f64)).collect(),
-                ));
+                self.stack.push(Type::Binary(binary));
             }
 
             // Standard input
@@ -1075,6 +1075,7 @@ impl Executor {
                     Type::List(_) => "list".to_string(),
                     Type::Json(_) => "json".to_string(),
                     Type::Error(_) => "error".to_string(),
+                    Type::Binary(_) => "binary".to_string(),
                     Type::Object(name, _) => name.to_string(),
                 };
 
@@ -1419,17 +1420,14 @@ impl Executor {
             self.evaluate_program(code.to_owned());
 
             let response_value = self.pop_stack();
-            if let Type::List(i) = response_value.clone() {
+            if let Type::Binary(i) = response_value.clone() {
                 let value = [
                     format!(
                         "HTTP/1.1 200 OK\r\nContent-Type: {};\r\n\r\n",
                         self.pop_stack().get_string()
                     )
                     .as_bytes(),
-                    (i.iter()
-                        .map(|x| x.get_number() as u8)
-                        .collect::<Vec<u8>>()
-                        .as_slice()),
+                    i.as_slice(),
                 ]
                 .as_slice()
                 .concat();
