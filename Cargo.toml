@@ -2,6 +2,10 @@
 name = "stack-server"
 version = "0.1.0"
 edition = "2021"
+license = "MIT"
+authors = ["Stack Programming Community <kajizukataichi@outlook.jp>"]
+description = "Server edition of Stack programming language distribution "
+repository = "https://github.com/stack-community/stack-server"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
