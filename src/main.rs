@@ -1349,7 +1349,7 @@ impl Executor {
 
     /// Http request handler
     fn handle(&mut self, mut stream: TcpStream, routes: HashMap<String, (String, bool, String)>) {
-        let mut buffer = [0; 1024];
+        let mut buffer = [0; 8192];
         stream.read(&mut buffer).unwrap();
 
         let request_str = String::from_utf8_lossy(&buffer);
@@ -1366,7 +1366,11 @@ impl Executor {
         }
 
         // Get request body
-        let mut body = query;
+        let mut body = percent_decode_str(&query)
+                    .decode_utf8()
+                    .unwrap_or_default()
+                    .trim()
+                    .trim_end_matches(char::from(0)).to_string();
         while let Some(line) = lines.next() {
             if line.is_empty() {
                 break;
