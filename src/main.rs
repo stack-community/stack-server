@@ -1509,7 +1509,10 @@ impl Executor {
 
         for stream in listener.incoming() {
             match stream {
-                Ok(stream) => self.handle(stream, hashmap.clone(), buffer_size),
+                Ok(stream) => {
+                    self.stack.push(Type::String(format!("{:?}", stream.peer_addr().unwrap())));
+                    self.handle(stream, hashmap.clone(), buffer_size)
+                },
                 Err(e) => {
                     println!("Error: {}", e);
                 }
