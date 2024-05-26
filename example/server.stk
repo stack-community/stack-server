@@ -30,8 +30,13 @@
     [(result)]
 ] (reply) var
 
-(127.0.0.1:8888)
-[
+[(prime-app)
+    [(address) (127.0.0.1:8888)]
+    [(buffer-size) 1024]
+]
+[] instance (option) var
+
+option [
     [[(GET /) (auth) (auth)] (
         (body) var (user) var user println
         (text/html) (index.html) read-file
