@@ -2,7 +2,7 @@ import requests
 import json
 
 # URLと送信するデータを定義
-url = 'http://127.0.0.1:8080/api'
+url = 'http://127.0.0.1:8888/api'
 data = {
     'number': int(input("> "))
 }
