@@ -1487,6 +1487,7 @@ impl Executor {
 
         let listener = TcpListener::bind(address.clone()).unwrap();
         println!("Server '{name}' is started on http://{address}");
+        println!("The request body's acceptable buffer size is {buffer_size} bytes");
 
         // Get route handler options in the Stack code
         let mut hashmap: HashMap<String, (String, bool, String)> = HashMap::new();
