@@ -30,10 +30,17 @@
     [(result)]
 ] (reply) var
 
-(127.0.0.1:8888)
-[
+[(prime-app)
+    [(address) (0.0.0.0:8888)]
+    [(buffer-size) 1024]
+]
+[] instance (option) var
+
+option [
     [[(GET /) (auth) (auth)] (
         (body) var (user) var user println
+        (ip-address) var ip-address println
+
         (text/html) (index.html) read-file
         reply [user 0 get (ここに判定結果が表示されます)]
         instance template
@@ -41,8 +48,9 @@
 
     [[(POST /) (auth) (auth)] (
         (body) var (user) var body println
-        body (number=) () replace (arg) var
-        
+        (ip-address) var ip-address println
+
+        body (number=) () replace (arg) var        
         arg ([0-9]+) regex () join (number) cast 
         prime? eval (result) var
 
@@ -55,7 +63,8 @@
     )]
 
     [[(POST /api)] (
-        body println
+        (body) var body println
+        (ip-address) var ip-address println
 
         body (number) get-json (number) cast (num) var
         num prime? eval (result) var
@@ -66,12 +75,13 @@
     )]
 
     [[(GET /new)] (
+        pop (ip-address) var ip-address println
         (text/html) (new.html) read-file
     )]
 
     [[(POST /new)] (
-        (body) var
-        body println
+        (body) var body println
+        (ip-address) var ip-address println
         
         body (&) split (i) (
             i (=) split (splited) var
