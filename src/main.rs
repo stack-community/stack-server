@@ -212,6 +212,13 @@ impl Type {
             _ => json!({}),
         }
     }
+
+    fn get_object(&self) -> (String, HashMap<String, Type>) {
+        match self {
+            Type::Object(name, value) => (name.to_owned(), value.to_owned()),
+            _ => ("".to_string(), HashMap::new()),
+        }
+    }
 }
 /// Manage program execution
 #[derive(Clone, Debug)]
@@ -1192,64 +1199,56 @@ impl Executor {
             // Get property of object
             "property" => {
                 let name = self.pop_stack().get_string();
-                match self.pop_stack() {
-                    Type::Object(_, data) => self.stack.push(
-                        data.get(name.as_str())
-                            .unwrap_or(&Type::Error("property".to_string()))
-                            .clone(),
-                    ),
-                    _ => self.stack.push(Type::Error("not-object".to_string())),
-                }
+                let (_, object) = self.pop_stack().get_object();
+                self.stack.push(
+                    object
+                        .get(name.as_str())
+                        .unwrap_or(&Type::Error("property".to_string()))
+                        .clone(),
+                )
             }
 
             // Call the method of object
             "method" => {
                 let method = self.pop_stack().get_string();
-                match self.pop_stack() {
-                    Type::Object(name, value) => {
-                        let data = Type::Object(name, value.clone());
-                        self.memory
-                            .entry("self".to_string())
-                            .and_modify(|value| *value = data.clone())
-                            .or_insert(data);
+                let (name, value) = self.pop_stack().get_object();
+                let data = Type::Object(name, value.clone());
+                self.memory
+                    .entry("self".to_string())
+                    .and_modify(|value| *value = data.clone())
+                    .or_insert(data);
 
-                        let program: String = match value.get(&method) {
-                            Some(i) => i.to_owned().get_string().to_string(),
-                            None => "".to_string(),
-                        };
+                let program: String = match value.get(&method) {
+                    Some(i) => i.to_owned().get_string().to_string(),
+                    None => "".to_string(),
+                };
 
-                        self.evaluate_program(program)
-                    }
-                    _ => self.stack.push(Type::Error("not-object".to_string())),
-                }
+                self.evaluate_program(program);
             }
 
             // Modify the property of object
             "modify" => {
                 let data = self.pop_stack();
                 let property = self.pop_stack().get_string();
-                match self.pop_stack() {
-                    Type::Object(name, mut value) => {
-                        value
-                            .entry(property)
-                            .and_modify(|value| *value = data.clone())
-                            .or_insert(data.clone());
+                let (name, mut value) = self.pop_stack().get_object();
+                value
+                    .entry(property)
+                    .and_modify(|value| *value = data.clone())
+                    .or_insert(data.clone());
 
-                        self.stack.push(Type::Object(name, value))
-                    }
-                    _ => self.stack.push(Type::Error("not-object".to_string())),
-                }
+                self.stack.push(Type::Object(name, value))
             }
 
             // Get all of properties
-            "all" => match self.pop_stack() {
-                Type::Object(_, data) => self.stack.push(Type::List(
-                    data.keys()
+            "all" => {
+                let (_, value) = self.pop_stack().get_object();
+                self.stack.push(Type::List(
+                    value
+                        .keys()
                         .map(|x| Type::String(x.to_owned()))
                         .collect::<Vec<Type>>(),
-                )),
-                _ => self.stack.push(Type::Error("not-object".to_string())),
-            },
+                ));
+            }
 
             // Get system information
             "sys-info" => {
@@ -1348,7 +1347,12 @@ impl Executor {
     }
 
     /// Http request handler
-    fn handle(&mut self, mut stream: TcpStream, routes: HashMap<String, (String, bool, String)>, buffer_size: usize) {
+    fn handle(
+        &mut self,
+        mut stream: TcpStream,
+        routes: HashMap<String, (String, bool, String)>,
+        buffer_size: usize,
+    ) {
         let mut buffer = vec![0; buffer_size];
         stream.read(&mut buffer).unwrap();
 
@@ -1370,7 +1374,8 @@ impl Executor {
             .decode_utf8()
             .unwrap_or_default()
             .trim()
-            .trim_end_matches(char::from(0)).to_string();
+            .trim_end_matches(char::from(0))
+            .to_string();
 
         while let Some(line) = lines.next() {
             if line.is_empty() {
@@ -1475,15 +1480,22 @@ impl Executor {
 
     // Main web server function
     fn server(&mut self, option: Type, code: Type) {
-        let (name, address, buffer_size): (String, String, usize) = if let Type::Object(name, value) = option {
-            (
-                name,
-                value.get("address").unwrap_or(&Type::String("127.0.0.1:8000".to_string())).get_string(),
-                value.get("buffer-size").unwrap_or(&Type::Number(8192f64)).get_number() as usize
-            )
-        } else {
-            ("app".to_string(), (option.get_string()) ,8192)
-        };
+        let (name, address, buffer_size): (String, String, usize) =
+            if let Type::Object(name, value) = option {
+                (
+                    name,
+                    value
+                        .get("address")
+                        .unwrap_or(&Type::String("127.0.0.1:8000".to_string()))
+                        .get_string(),
+                    value
+                        .get("buffer-size")
+                        .unwrap_or(&Type::Number(8192f64))
+                        .get_number() as usize,
+                )
+            } else {
+                ("app".to_string(), (option.get_string()), 8192)
+            };
 
         let listener = TcpListener::bind(address.clone()).unwrap();
         println!("Server '{name}' is started on http://{address}");
@@ -1510,9 +1522,10 @@ impl Executor {
         for stream in listener.incoming() {
             match stream {
                 Ok(stream) => {
-                    self.stack.push(Type::String(format!("{:?}", stream.peer_addr().unwrap())));
+                    self.stack
+                        .push(Type::String(format!("{:?}", stream.peer_addr().unwrap())));
                     self.handle(stream, hashmap.clone(), buffer_size)
-                },
+                }
                 Err(e) => {
                     println!("Error: {}", e);
                 }
