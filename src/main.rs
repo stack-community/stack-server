@@ -953,9 +953,11 @@ impl Executor {
                 let min = self.pop_stack().get_number();
 
                 let mut range: Vec<Type> = Vec::new();
+                let mut i = min;
 
-                for i in (min as usize..max as usize).step_by(step as usize) {
-                    range.push(Type::Number(i as f64));
+                while i < max {
+                    range.push(Type::Number(i));
+                    i += step;
                 }
 
                 self.stack.push(Type::List(range));
