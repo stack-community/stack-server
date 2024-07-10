@@ -30,9 +30,12 @@
     [(result)]
 ] (reply) var
 
-[(prime-app)
+[(prime-apps)
     [(address) (0.0.0.0:8888)]
     [(buffer-size) 1024]
+    [(black-list) [
+        (write-file)
+    ]]
 ]
 [] instance (option) var
 
@@ -50,9 +53,8 @@ option [
         (body) var (user) var body println
         (ip-address) var ip-address println
 
-        body (number=) () replace (arg) var        
-        arg ([0-9]+) regex () join (number) cast 
-        prime? eval (result) var
+        body (number=) () replace (arg) var     
+        arg eval (arg) var arg prime? eval (result) var
 
         arg (は素数です) (は素数ではありません)
         result if concat (result) var
@@ -89,16 +91,14 @@ option [
         ) for
 
         auth [name pass] append (auth) var
-        auth println
-        auth (users.stk) write-file
+        auth println auth (users.stk) (write-file) eval-unsafe
 
         (text/html) (ご登録ありがとうございました)
     )]
 
     [[(GET /delete) (auth) (auth)] (
-        pop (user) var
-        auth copy user index del (auth) var 
-        auth (users.stk) write-file
+        pop (user) var auth copy user index del (auth) var 
+        auth (users.stk) (write-file) eval-unsafe
         
         (text/html) (ご利用ありがとうございました。<br>またのご利用お待ちしております。)
     )] 
