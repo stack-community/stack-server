@@ -226,6 +226,7 @@ struct Executor {
     stack: Vec<Type>,              // Data stack
     memory: HashMap<String, Type>, // Variable's memory
     mode: Mode,                    // Execution mode
+    black_list: Type               // List of token that should not eval
 }
 
 impl Executor {
@@ -235,6 +236,7 @@ impl Executor {
             stack: Vec::new(),
             memory: HashMap::new(),
             mode,
+            black_list: Type::List(vec![])
         }
     }
 
@@ -348,114 +350,149 @@ impl Executor {
         syntax
     }
 
-    /// evaluate string as program
+    fn processing_token(&mut self, token: String) {
+        // Show inside stack to debug
+        let stack = self.show_stack();
+        self.log_print(format!("{stack} ←  {token}\n"));
+
+        // Character vector for token processing
+        let chars: Vec<char> = token.chars().collect();
+
+        // Judge what the token is
+        if let Ok(i) = token.parse::<f64>() {
+            // Push number value on the stack
+            self.stack.push(Type::Number(i));
+        } else if token == "true" || token == "false" {
+            // Push bool value on the stack
+            self.stack.push(Type::Bool(token.parse().unwrap_or(true)));
+        } else if chars[0] == '(' && chars[chars.len() - 1] == ')' {
+            // Processing string escape
+            let string = {
+                let mut buffer = String::new(); // Temporary storage
+                let mut brackets = 0; // String's nest structure
+                let mut parentheses = 0; // List's nest structure
+                let mut hash = false; // Is it Comment
+                let mut escape = false; // Flag to indicate next character is escaped
+
+                for c in token[1..token.len() - 1].to_string().chars() {
+                    match c {
+                        '\\' if !escape => {
+                            escape = true;
+                        }
+                        '(' if !hash && !escape => {
+                            brackets += 1;
+                            buffer.push('(');
+                        }
+                        ')' if !hash && !escape => {
+                            brackets -= 1;
+                            buffer.push(')');
+                        }
+                        '#' if !hash && !escape => {
+                            hash = true;
+                            buffer.push('#');
+                        }
+                        '#' if hash && !escape => {
+                            hash = false;
+                            buffer.push('#');
+                        }
+                        '[' if !hash && brackets == 0 && !escape => {
+                            parentheses += 1;
+                            buffer.push('[');
+                        }
+                        ']' if !hash && brackets == 0 && !escape => {
+                            parentheses -= 1;
+                            buffer.push(']');
+                        }
+                        _ => {
+                            if parentheses == 0 && brackets == 0 && !hash {
+                                if escape {
+                                    match c {
+                                        'n' => buffer.push_str("\\n"),
+                                        't' => buffer.push_str("\\t"),
+                                        'r' => buffer.push_str("\\r"),
+                                        _ => buffer.push(c),
+                                    }
+                                } else {
+                                    buffer.push(c);
+                                }
+                            } else {
+                                if escape {
+                                    buffer.push('\\');
+                                }
+                                buffer.push(c);
+                            }
+                            escape = false; // Reset escape flag for non-escape characters
+                        }
+                    }
+                }
+                buffer
+            }; // Push string value on the stack
+            self.stack.push(Type::String(string));
+        } else if chars[0] == '[' && chars[chars.len() - 1] == ']' {
+            // Push list value on the stack
+            let old_len = self.stack.len(); // length of old stack
+            let slice = &token[1..token.len() - 1];
+            self.evaluate_program(slice.to_string());
+            // Make increment of stack an element of list
+            let mut list = Vec::new();
+            for _ in old_len..self.stack.len() {
+                list.push(self.pop_stack());
+            }
+            list.reverse(); // reverse list
+            self.stack.push(Type::List(list));
+        } else if token.starts_with("error:") {
+            // Push error value on the stack
+            self.stack.push(Type::Error(token.replace("error:", "")))
+        } else if let Some(i) = self.memory.get(&token) {
+            // Push variable's data on stack
+            self.stack.push(i.clone());
+        } else if chars[0] == '#' && chars[chars.len() - 1] == '#' {
+            // Processing comments
+            self.log_print(format!("* Comment \"{}\"\n", token.replace('#', "")));
+        } else {
+            // Else, execute as command
+            self.execute_command(token);
+        }
+    }
+
     fn evaluate_program(&mut self, code: String) {
+        // Parse into token string
+        let syntax: Vec<String> = self.analyze_syntax(code);
+        let black_list = self.black_list
+            .get_list()
+            .iter()
+            .map(|i| i.get_string())
+            .collect::<Vec<String>>();
+
+        for token in syntax {
+            if {
+                let mut flag = true;
+                for black_token in black_list.iter() {
+                    if &token == black_token {
+                        flag = false;
+                        break;
+                    }
+                }
+                flag
+            } {
+                self.processing_token(token);
+            } else {
+                self.stack
+                    .push(Type::Error("eval-security-fault".to_string()))
+            }
+        }
+
+        // Show inside stack, after execution
+        let stack = self.show_stack();
+        self.log_print(format!("{stack}\n"));
+    }
+
+    fn evaluate_program_unsafe(&mut self, code: String) {
         // Parse into token string
         let syntax: Vec<String> = self.analyze_syntax(code);
 
         for token in syntax {
-            // Show inside stack to debug
-            let stack = self.show_stack();
-            self.log_print(format!("{stack} ←  {token}\n"));
-
-            // Character vector for token processing
-            let chars: Vec<char> = token.chars().collect();
-
-            // Judge what the token is
-            if let Ok(i) = token.parse::<f64>() {
-                // Push number value on the stack
-                self.stack.push(Type::Number(i));
-            } else if token == "true" || token == "false" {
-                // Push bool value on the stack
-                self.stack.push(Type::Bool(token.parse().unwrap_or(true)));
-            } else if chars[0] == '(' && chars[chars.len() - 1] == ')' {
-                // Processing string escape
-                let string = {
-                    let mut buffer = String::new(); // Temporary storage
-                    let mut brackets = 0; // String's nest structure
-                    let mut parentheses = 0; // List's nest structure
-                    let mut hash = false; // Is it Comment
-                    let mut escape = false; // Flag to indicate next character is escaped
-
-                    for c in token[1..token.len() - 1].to_string().chars() {
-                        match c {
-                            '\\' if !escape => {
-                                escape = true;
-                            }
-                            '(' if !hash && !escape => {
-                                brackets += 1;
-                                buffer.push('(');
-                            }
-                            ')' if !hash && !escape => {
-                                brackets -= 1;
-                                buffer.push(')');
-                            }
-                            '#' if !hash && !escape => {
-                                hash = true;
-                                buffer.push('#');
-                            }
-                            '#' if hash && !escape => {
-                                hash = false;
-                                buffer.push('#');
-                            }
-                            '[' if !hash && brackets == 0 && !escape => {
-                                parentheses += 1;
-                                buffer.push('[');
-                            }
-                            ']' if !hash && brackets == 0 && !escape => {
-                                parentheses -= 1;
-                                buffer.push(']');
-                            }
-                            _ => {
-                                if parentheses == 0 && brackets == 0 && !hash {
-                                    if escape {
-                                        match c {
-                                            'n' => buffer.push_str("\\n"),
-                                            't' => buffer.push_str("\\t"),
-                                            'r' => buffer.push_str("\\r"),
-                                            _ => buffer.push(c),
-                                        }
-                                    } else {
-                                        buffer.push(c);
-                                    }
-                                } else {
-                                    if escape {
-                                        buffer.push('\\');
-                                    }
-                                    buffer.push(c);
-                                }
-                                escape = false; // Reset escape flag for non-escape characters
-                            }
-                        }
-                    }
-                    buffer
-                }; // Push string value on the stack
-                self.stack.push(Type::String(string));
-            } else if chars[0] == '[' && chars[chars.len() - 1] == ']' {
-                // Push list value on the stack
-                let old_len = self.stack.len(); // length of old stack
-                let slice = &token[1..token.len() - 1];
-                self.evaluate_program(slice.to_string());
-                // Make increment of stack an element of list
-                let mut list = Vec::new();
-                for _ in old_len..self.stack.len() {
-                    list.push(self.pop_stack());
-                }
-                list.reverse(); // reverse list
-                self.stack.push(Type::List(list));
-            } else if token.starts_with("error:") {
-                // Push error value on the stack
-                self.stack.push(Type::Error(token.replace("error:", "")))
-            } else if let Some(i) = self.memory.get(&token) {
-                // Push variable's data on stack
-                self.stack.push(i.clone());
-            } else if chars[0] == '#' && chars[chars.len() - 1] == '#' {
-                // Processing comments
-                self.log_print(format!("* Comment \"{}\"\n", token.replace('#', "")));
-            } else {
-                // Else, execute as command
-                self.execute_command(token);
-            }
+            self.processing_token(token);
         }
 
         // Show inside stack, after execution
@@ -796,6 +833,11 @@ impl Executor {
             "eval" => {
                 let code = self.pop_stack().get_string();
                 self.evaluate_program(code)
+            }
+
+            "eval-unsafe" => {
+                let code = self.pop_stack().get_string();
+                self.evaluate_program_unsafe(code);
             }
 
             // Conditional branch
@@ -1482,7 +1524,7 @@ impl Executor {
 
     // Main web server function
     fn server(&mut self, option: Type, code: Type) {
-        let (name, address, buffer_size): (String, String, usize) =
+        let (name, address, buffer_size, black_list): (String, String, usize, Type) =
             if let Type::Object(name, value) = option {
                 (
                     name,
@@ -1494,10 +1536,15 @@ impl Executor {
                         .get("buffer-size")
                         .unwrap_or(&Type::Number(8192f64))
                         .get_number() as usize,
+                    value
+                        .get("black-list")
+                        .unwrap_or(&Type::List(vec![])).to_owned()      
                 )
             } else {
-                ("app".to_string(), (option.get_string()), 8192)
+                ("app".to_string(), (option.get_string()), 8192, Type::List(vec![]))
             };
+
+        self.black_list = black_list;
 
         let listener = TcpListener::bind(address.clone()).unwrap();
         println!("Server '{name}' is started on http://{address}");
