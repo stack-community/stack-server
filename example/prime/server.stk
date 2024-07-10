@@ -35,6 +35,7 @@
     [(buffer-size) 1024]
     [(black-list) [
         (write-file)
+        (exit)
     ]]
 ]
 [] instance (option) var
