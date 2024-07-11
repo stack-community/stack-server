@@ -2,14 +2,14 @@
     (number) var
     2 (i) var
     true (flag) var
-    
+
     (   (false) (true)
         number 2 less if (flag) var
     ) (
-        (false (flag) var) 
+        (false (flag) var)
         (
             (
-                ( 
+               (
                     false (flag) var
                 ) ()
                 number i mod 0 equal if
@@ -23,9 +23,9 @@
 )
 (prime?) var
 
-(users.stk) read-file eval (auth) var
+(users.slon) read-file eval (auth) var
 
-[(reply) 
+[(reply)
     [(user)]
     [(result)]
 ] (reply) var
@@ -37,6 +37,7 @@
         (write-file)
         (exit)
     ]]
+    [(rate-limit) 5]
 ]
 [] instance (option) var
 
@@ -54,8 +55,8 @@ option [
         (body) var (user) var body println
         (ip-address) var ip-address println
 
-        body (number=) () replace (arg) var     
-        arg eval (arg) var arg prime? eval (result) var
+        body (number=) () replace eval (arg) var
+        arg prime? eval (result) var
 
         arg (は素数です) (は素数ではありません)
         result if concat (result) var
@@ -72,7 +73,7 @@ option [
         body (number) get-json (number) cast (num) var
         num prime? eval (result) var
 
-        ({"number": <1>, "result": <2>}) 
+        ({"number": <1>, "result": <2>})
         (<1>) num replace (<2>) result replace
         (application/json) swap
     )]
@@ -85,22 +86,22 @@ option [
     [[(POST /new)] (
         (body) var body println
         (ip-address) var ip-address println
-        
+
         body (&) split (i) (
             i (=) split (splited) var
             splited 1 get splited 0 get var
         ) for
 
         auth [name pass] append (auth) var
-        auth println auth (users.stk) (write-file) eval-unsafe
+        auth println auth (users.slon) (write-file) eval-unsafe
 
         (text/html) (ご登録ありがとうございました)
     )]
 
     [[(GET /delete) (auth) (auth)] (
-        pop (user) var auth copy user index del (auth) var 
-        auth (users.stk) (write-file) eval-unsafe
-        
+        pop (user) var auth copy user index del (auth) var
+        auth (users.slon) (write-file) eval-unsafe
+
         (text/html) (ご利用ありがとうございました。<br>またのご利用お待ちしております。)
-    )] 
+    )]
 ] start-server
