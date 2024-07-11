@@ -226,7 +226,7 @@ struct Executor {
     stack: Vec<Type>,              // Data stack
     memory: HashMap<String, Type>, // Variable's memory
     mode: Mode,                    // Execution mode
-    black_list: Type               // List of token that should not eval
+    black_list: Type,              // List of token that should not eval
 }
 
 impl Executor {
@@ -236,7 +236,7 @@ impl Executor {
             stack: Vec::new(),
             memory: HashMap::new(),
             mode,
-            black_list: Type::List(vec![])
+            black_list: Type::List(vec![]),
         }
     }
 
@@ -458,7 +458,8 @@ impl Executor {
     fn evaluate_program(&mut self, code: String) {
         // Parse into token string
         let syntax: Vec<String> = self.analyze_syntax(code);
-        let black_list = self.black_list
+        let black_list = self
+            .black_list
             .get_list()
             .iter()
             .map(|i| i.get_string())
@@ -1524,31 +1525,58 @@ impl Executor {
 
     // Main web server function
     fn server(&mut self, option: Type, code: Type) {
-        let (name, address, buffer_size, black_list): (String, String, usize, Type) =
-            if let Type::Object(name, value) = option {
-                (
-                    name,
-                    value
-                        .get("address")
-                        .unwrap_or(&Type::String("127.0.0.1:8000".to_string()))
-                        .get_string(),
-                    value
-                        .get("buffer-size")
-                        .unwrap_or(&Type::Number(8192f64))
-                        .get_number() as usize,
-                    value
-                        .get("black-list")
-                        .unwrap_or(&Type::List(vec![])).to_owned()      
-                )
-            } else {
-                ("app".to_string(), (option.get_string()), 8192, Type::List(vec![]))
-            };
+        let (name, address, buffer_size, black_list, rate_limit): (
+            String,
+            String,
+            usize,
+            Type,
+            f64,
+        ) = if let Type::Object(name, value) = option {
+            (
+                name,
+                value
+                    .get("address")
+                    .unwrap_or(&Type::String("127.0.0.1:8000".to_string()))
+                    .get_string(),
+                value
+                    .get("buffer-size")
+                    .unwrap_or(&Type::Number(8192f64))
+                    .get_number() as usize,
+                value
+                    .get("black-list")
+                    .unwrap_or(&Type::List(vec![]))
+                    .to_owned(),
+                value
+                    .get("rate-limit")
+                    .unwrap_or(&Type::Number(0f64))
+                    .get_number(),
+            )
+        } else {
+            (
+                "app".to_string(),
+                (option.get_string()),
+                8192,
+                Type::List(vec![]),
+                0f64,
+            )
+        };
 
-        self.black_list = black_list;
+        // Set security black-list
+        self.black_list = black_list.clone();
 
         let listener = TcpListener::bind(address.clone()).unwrap();
-        println!("Server '{name}' is started on http://{address}");
-        println!("The request body's acceptable buffer size is {buffer_size} bytes");
+        print!("Server '{name}' is started on http://{address}. ");
+        println!("Access rate-limit is {rate_limit} seconds. ");
+        print!("The request body's acceptable buffer size is {buffer_size} bytes. ");
+        println!(
+            "Security black-list are {}.",
+            black_list
+                .get_list()
+                .iter()
+                .map(|x| x.get_string())
+                .collect::<Vec<String>>()
+                .join(", ")
+        );
 
         // Get route handler options in the Stack code
         let mut hashmap: HashMap<String, (String, bool, String)> = HashMap::new();
@@ -1568,12 +1596,30 @@ impl Executor {
             hashmap.insert(route, (value, is_auth, user_data));
         }
 
+        let mut last_time: f64 = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_secs_f64()
+            - rate_limit;
+
         for stream in listener.incoming() {
             match stream {
                 Ok(stream) => {
-                    self.stack
-                        .push(Type::String(format!("{:?}", stream.peer_addr().unwrap())));
-                    self.handle(stream, hashmap.clone(), buffer_size)
+                    if (SystemTime::now()
+                        .duration_since(UNIX_EPOCH)
+                        .unwrap()
+                        .as_secs_f64()
+                        - last_time)
+                        > rate_limit
+                    {
+                        last_time = SystemTime::now()
+                            .duration_since(UNIX_EPOCH)
+                            .unwrap()
+                            .as_secs_f64();
+                        self.stack
+                            .push(Type::String(format!("{:?}", stream.peer_addr().unwrap())));
+                        self.handle(stream, hashmap.clone(), buffer_size)
+                    }
                 }
                 Err(e) => {
                     println!("Error: {}", e);
